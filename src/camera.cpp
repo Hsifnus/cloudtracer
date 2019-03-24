@@ -168,6 +168,23 @@ void Camera::load_settings(string filename) {
   cout << "[Camera] Loaded settings from " << filename << endl;
 }
 
+Ray Camera::generate_ray(double x, double y) const {
+
+  // TODO (Part 1.2):
+  // compute position of the input sensor sample coordinate on the
+  // canonical sensor plane one unit away from the pinhole.
+  // Note: hFov and vFov are in degrees.
+  // 
+
+  Vector3D sensorBL = Vector3D(-tan(radians(hFov)*.5), -tan(radians(vFov)*.5), -1);
+  Vector3D sensorUR = Vector3D( tan(radians(hFov)*.5),  tan(radians(vFov)*.5), -1);
+  Vector3D sensorLoc = Vector3D((1-x)*sensorBL.x + x*sensorUR.x, (1-y)*sensorBL.y + y*sensorUR.y, -1);
+
+  Ray r = Ray(pos, (c2w * sensorLoc).unit(), fClip);
+  r.min_t = nClip;
+  return r;
+
+}
 
 Ray Camera::generate_ray_for_thin_lens(double x, double y, double rndR, double rndTheta) const {
 

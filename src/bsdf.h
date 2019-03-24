@@ -15,6 +15,10 @@ namespace CGL {
 
 // Helper math functions. Assume all vectors are in unit hemisphere //
 
+inline double delta (double n, double m) {
+  return exp(-1 * pow(n,2.0) / m);
+}
+
 inline double clamp (double n, double lower, double upper) {
   return std::max(lower, std::min(n, upper));
 }

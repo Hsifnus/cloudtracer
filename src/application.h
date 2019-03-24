@@ -56,6 +56,7 @@ struct AppConfig {
     pathtracer_samples_per_patch = 32;
     pathtracer_max_tolerance = 0.05f;
     pathtracer_direct_hemisphere_sample = false;
+    pathtracer_mode = 3;
 
     pathtracer_filename = "";
     pathtracer_lensRadius = 0.25;
@@ -78,6 +79,7 @@ struct AppConfig {
   size_t pathtracer_samples_per_patch;
 
   bool pathtracer_direct_hemisphere_sample;
+  size_t pathtracer_mode;
 
   string pathtracer_filename;
   double pathtracer_lensRadius;

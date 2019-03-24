@@ -83,7 +83,7 @@ int main( int argc, char** argv ) {
   bool write_to_file = false;
   size_t w = 0, h = 0, x = -1, y = 0, dx = 0, dy = 0;
   string filename, cam_settings = "";
-  while ( (opt = getopt(argc, argv, "s:l:t:m:e:h:H:f:r:c:a:p:b:d:")) != -1 ) {  // for each option...
+  while ( (opt = getopt(argc, argv, "s:l:t:m:e:h:H:f:r:c:a:p:b:d:M:")) != -1 ) {  // for each option...
     switch ( opt ) {
       case 'f':
           write_to_file = true;
@@ -129,6 +129,9 @@ int main( int argc, char** argv ) {
           config.pathtracer_samples_per_patch = atoi(argv[optind-1]);
           config.pathtracer_max_tolerance = atof(argv[optind]);
           optind++;
+          break;
+      case 'M':
+          config.pathtracer_mode = atoi(optarg);
           break;
       case 'H':
           config.pathtracer_direct_hemisphere_sample = true;

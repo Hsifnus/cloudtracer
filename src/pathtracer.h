@@ -75,6 +75,7 @@ class PathTracer {
              float max_tolerance = 0.05f,
              HDRImageBuffer* envmap = NULL,
              bool direct_hemisphere_sample = false,
+             size_t mode = 3,
              string filename = "",
              double lensRadius = 0.25,
              double focalDistance = 4.7);
@@ -271,6 +272,7 @@ class PathTracer {
 
   size_t numWorkerThreads;
   size_t imageTileSize;
+  size_t mode;   ///< tracing mode (for different parts of the project)
 
   bool continueRaytracing;                  ///< rendering should continue
   std::vector<std::thread*> workerThreads;  ///< pool of worker threads
