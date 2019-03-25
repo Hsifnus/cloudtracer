@@ -112,31 +112,35 @@ Spectrum MicrofacetBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) 
   // Note: You should fill in the sampled direction *wi and the corresponding *pdf,
   //       and return the sampled BRDF value.
 
-  // Obtain randomly sampled h
-  Vector2D sample = sampler.get_sample();
-  double r1 = sample[0]; double r2 = sample[1];
-  double thetah = atan(sqrt(-pow(alpha, 2.0) * log(1 - r1)));
-  double phih = 2 * PI * r2;
-  Vector3D h = Vector3D(sin(thetah)*cos(phih), sin(thetah)*sin(phih), cos(thetah));
+  bool use_placeholder = false;
 
-  // Generate wi from half vector and wo
-  Matrix3x3 o2h;
-  make_coord_space(o2h, h);
-  Vector3D woh = o2h * wo;  Vector3D wih = Vector3D();
-  reflect(woh, &wih);
-  *wi = o2h.T() * wih;
-  if ((*wi).z <= 0) {
-    *pdf = 0.0f;
-    return Spectrum();
+  if (use_placeholder) {
+    *wi = cosineHemisphereSampler.get_sample(pdf); //placeholder
+  } else {
+    // Obtain randomly sampled h
+    Vector2D sample = sampler.get_sample();
+    double r1 = sample[0]; double r2 = sample[1];
+    double thetah = atan(sqrt(-pow(alpha, 2.0) * log(1 - r1)));
+    double phih = 2 * PI * r2;
+    Vector3D h = Vector3D(sin(thetah)*cos(phih), sin(thetah)*sin(phih), cos(thetah));
+
+    // Generate wi from half vector and wo
+    Matrix3x3 o2h;
+    make_coord_space(o2h, h);
+    Vector3D woh = o2h * wo;  Vector3D wih = Vector3D();
+    reflect(woh, &wih);
+    *wi = o2h.T() * wih;
+    if ((*wi).z <= 0) {
+      *pdf = 0.0f;
+      return Spectrum();
+    }
+
+    // Compute the PDF
+    double pdfh = exp(-pow(tan(getTheta(h)), 2.0) / pow(alpha, 2.0)) 
+                        / (PI * pow(alpha, 2.0) * pow(cos_theta(h), 3.0) + EPS_B);;
+    *pdf = pdfh / (4*(dot(h, *wi)) + EPS_B);
   }
 
-  // Compute the PDF
-  double pdfh = exp(-pow(tan(getTheta(h)), 2.0) / pow(alpha, 2.0)) 
-                      / (PI * pow(alpha, 2.0) * pow(cos_theta(h), 3.0) + EPS_B);;
-  *pdf = pdfh / (4*(dot(h, *wi)) + EPS_B);
-
-  // std::cout << "sample_f: " << thetah << ", " << h << ", " << *pdf << std::endl;
-  // *wi = cosineHemisphereSampler.get_sample(pdf); //placeholder
   return MicrofacetBSDF::f(wo, *wi);
 }
 

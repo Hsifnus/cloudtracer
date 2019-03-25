@@ -608,6 +608,7 @@ Spectrum PathTracer::estimate_direct_lighting_importance(const Ray& r, const Int
   for (SceneLight *&light : scene->lights) {
     int sample_count = light->is_delta_light() ? 1 : ns_area_light;
     for (int i = 0; i < sample_count; i++) {
+      pdf = direct_hemisphere_sample ? 0.0f : 1.0f;
       rad_in = light->sample_L(hit_p, &wi, &distToLight, &pdf);
       w_in = w2o * wi;
       if (w_in[2] >= 0) {
@@ -704,7 +705,7 @@ Spectrum PathTracer::est_radiance_global_illumination(const Ray &r) {
   // This changes if you implement hemispherical lighting for extra credit.
 
   if (!bvh->intersect(r, &isect)) 
-    return L_out;
+    return envLight ? envLight->sample_dir(r) : L_out;
 
   switch (this->mode) {
     // This line returns a color depending only on the normal vector 
