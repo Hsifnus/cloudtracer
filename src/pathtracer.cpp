@@ -682,11 +682,15 @@ Spectrum PathTracer::at_least_one_bounce_radiance(const Ray&r, const Intersectio
         Spectrum rad_in = at_least_one_bounce_radiance(sampleRay, next_isect);
         if (isect.bsdf->is_delta())
           rad_in += zero_bounce_radiance(sampleRay, next_isect);
-        float cosThetai = (fabs(w_in[2]) / w_in.norm());
-        L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
+        if (pdf != 0.0f) {
+          float cosThetai = (fabs(w_in[2]) / w_in.norm());
+          L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
+        }
       }
     }
   }
+
+  // cout << "Depth " << r.depth << " L_out: " << L_out << endl;
 
   return L_out;
 }
@@ -753,7 +757,8 @@ Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {
       offset = gridSampler->get_sample();
       Ray currRay = camera->generate_ray((dbx+offset.x) / w, (dby+offset.y) / h);
       currRay.depth = max_ray_depth;
-      Spectrum sample = est_radiance_global_illumination(currRay) / num_samples;
+      Spectrum sample = est_radiance_global_illumination(currRay);
+      // cout << "sample #" << (i+1) << ": " << sample << endl;
       spectrum += sample;
       float illum = sample.illum();
       sum += illum;
@@ -772,11 +777,13 @@ Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {
     }
   }
 
+  // cout << "pixel result: " << spectrum / totalSamplesCounted << endl;
+
   // if (numWorkerThreads == 1) {
   //   cout << "converged!! " << totalSamplesCounted << " samples counted!" << endl;
   // }
   sampleCountBuffer[x + y * frameBuffer.w] = totalSamplesCounted;
-  return spectrum * num_samples / totalSamplesCounted;
+  return spectrum / totalSamplesCounted;
 
 }
 

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <utility>
 
-#define EPS_B 1e-10;
+#define EPS_B 1e-20
 
 using std::min;
 using std::max;
@@ -77,22 +77,33 @@ double MicrofacetBSDF::D(const Vector3D& h) {
   // Compute Beckmann normal distribution function (NDF) here.
   // You will need the roughness alpha.
 
-  return std::pow(cos_theta(h), 100.0);;
+  double m = PI * pow(alpha, 2.0) * pow(cos_theta(h), 4.0) + EPS_B;
+  double exponent = pow(tan(getTheta(h)), 2.0) / pow(alpha, 2.0);
+  return exp(-exponent) / m;
 }
 
 Spectrum MicrofacetBSDF::F(const Vector3D& wi) {
   // TODO: 2.3
   // Compute Fresnel term for reflection on dielectric-conductor interface.
-  // You will need both eta and etaK, both of which are Spectrum.
-
-  return Spectrum();
+  // You will need both eta and k, both of which are Spectrum.
+  double cwi = cos_theta(wi);
+  Spectrum a = eta*eta + k*k; Spectrum b = 2*eta; Spectrum c = (pow(cos_theta(wi), 2.0) + EPS_B) * Spectrum(1, 1, 1);
+  Spectrum Rs = (a - b*cwi + c) / (a + b*cwi + c);
+  Spectrum Rp = (a*c - b*cwi + 1) / (a*c + b*cwi + 1);
+  return (Rs + Rp) / 2.0;
 }
 
 Spectrum MicrofacetBSDF::f(const Vector3D& wo, const Vector3D& wi) {
   // TODO: 2.1
   // Implement microfacet model here
-
-  return Spectrum();
+  if (wo.z <= 0 || wi.z <= 0)
+    return Spectrum();
+  Vector3D h = (wo + wi).unit();
+  Spectrum eff = F(wi);
+  double d = D(h);
+  Spectrum result = eff * G(wo, wi) * d / (4 * wo.z * wi.z + EPS_B);
+  // std::cout << "f: (" << eff << ", " << G(wo, wi) << ", " << d << ") -> " << result << std::endl;
+  return result;
 }
 
 Spectrum MicrofacetBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) {
@@ -101,7 +112,31 @@ Spectrum MicrofacetBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) 
   // Note: You should fill in the sampled direction *wi and the corresponding *pdf,
   //       and return the sampled BRDF value.
 
-  *wi = cosineHemisphereSampler.get_sample(pdf); //placeholder
+  // Obtain randomly sampled h
+  Vector2D sample = sampler.get_sample();
+  double r1 = sample[0]; double r2 = sample[1];
+  double thetah = atan(sqrt(-pow(alpha, 2.0) * log(1 - r1)));
+  double phih = 2 * PI * r2;
+  Vector3D h = Vector3D(sin(thetah)*cos(phih), sin(thetah)*sin(phih), cos(thetah));
+
+  // Generate wi from half vector and wo
+  Matrix3x3 o2h;
+  make_coord_space(o2h, h);
+  Vector3D woh = o2h * wo;  Vector3D wih = Vector3D();
+  reflect(woh, &wih);
+  *wi = o2h.T() * wih;
+  if ((*wi).z <= 0) {
+    *pdf = 0.0f;
+    return Spectrum();
+  }
+
+  // Compute the PDF
+  double pdfh = exp(-pow(tan(getTheta(h)), 2.0) / pow(alpha, 2.0)) 
+                      / (PI * pow(alpha, 2.0) * pow(cos_theta(h), 3.0) + EPS_B);;
+  *pdf = pdfh / (4*(dot(h, *wi)) + EPS_B);
+
+  // std::cout << "sample_f: " << thetah << ", " << h << ", " << *pdf << std::endl;
+  // *wi = cosineHemisphereSampler.get_sample(pdf); //placeholder
   return MicrofacetBSDF::f(wo, *wi);
 }
 
@@ -141,7 +176,6 @@ Spectrum GlassBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) {
   } else {
     *pdf = 1.0 - prob;
     Spectrum result = f(wo, *wi);
-    // std::cout << result << ", " << *wi << " -> " << wo << std::endl;
     return (1.0 - prob) * transmittance / abs_cos_theta(*wi) / pow(iord, 2.0);
   }
 }
