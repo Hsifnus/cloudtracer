@@ -655,6 +655,10 @@ Spectrum PathTracer::at_least_one_bounce_radiance(const Ray&r, const Intersectio
   make_coord_space(o2w, isect.n);
   Matrix3x3 w2o = o2w.T();
 
+  // if (r.depth == max_ray_depth) {
+  //   cout << isect.t * r.d.z << endl;
+  // }
+
   Vector3D hit_p = r.o + r.d * isect.t;
   Vector3D w_out = w2o * (-r.d);
   Spectrum L_out = Spectrum();
@@ -746,20 +750,23 @@ Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {
   float sum = 0.0; float sq_sum = 0.0;
   float fsamplesPerBatch = static_cast<float>(samplesPerBatch);
   int totalSamplesCounted = 0;
+  Vector2D samplesForLens = gridSampler->get_sample();
 
   if (num_samples == 1) {
-    Ray currRay = camera->generate_ray((dbx+0.5) / w, (dby+0.5) / h);
+    Ray currRay = camera->generate_ray_for_thin_lens((dbx+0.5) / w, (dby+0.5) / h, 
+      samplesForLens.x, samplesForLens.y * 2.0 * PI);
     currRay.depth = max_ray_depth;
     spectrum = est_radiance_global_illumination(currRay);
     totalSamplesCounted = 1;
   } else if (num_samples > 1) {
     Vector2D offset;
     for (int i = 0; i < num_samples; i++) {
+      samplesForLens = gridSampler->get_sample();
       offset = gridSampler->get_sample();
-      Ray currRay = camera->generate_ray((dbx+offset.x) / w, (dby+offset.y) / h);
+      Ray currRay = camera->generate_ray_for_thin_lens((dbx+offset.x) / w, (dby+offset.y) / h, 
+        samplesForLens.x, samplesForLens.y * 2.0 * PI);
       currRay.depth = max_ray_depth;
       Spectrum sample = est_radiance_global_illumination(currRay);
-      // cout << "sample #" << (i+1) << ": " << sample << endl;
       spectrum += sample;
       float illum = sample.illum();
       sum += illum;
@@ -768,9 +775,6 @@ Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {
       if ((i+1) % samplesPerBatch == 0) {
         float mu = sum / totalSamplesCounted;
         float var = (1.0f/(totalSamplesCounted - 1.0f)) * fabs(sq_sum - sum*mu);
-        // cout << "var: " << var << endl;
-        // cout << "threshold: " << maxTolerance * mu << endl;
-        // cout << "convergence: " << 1.96f*sqrt(var/totalSamplesCounted) << endl;
         if (1.96f*sqrt(var/totalSamplesCounted) <= maxTolerance * mu) {
           break;
         }
@@ -778,11 +782,6 @@ Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {
     }
   }
 
-  // cout << "pixel result: " << spectrum / totalSamplesCounted << endl;
-
-  // if (numWorkerThreads == 1) {
-  //   cout << "converged!! " << totalSamplesCounted << " samples counted!" << endl;
-  // }
   sampleCountBuffer[x + y * frameBuffer.w] = totalSamplesCounted;
   return spectrum / totalSamplesCounted;
 

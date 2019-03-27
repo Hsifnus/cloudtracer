@@ -439,6 +439,7 @@ void Application::keyboard_event(int key, int event, unsigned char mods) {
           case 'z': case 'x': case 'Z': case 'X':
           case ';': case '\'': 
           case '0': case '1': case '2': case '3': case '4':
+          case 'k': case 'K': case 'l': case 'L':
             pathtracer->stop();
             pathtracer->key_press(key);
             pathtracer->start_raytracing();
