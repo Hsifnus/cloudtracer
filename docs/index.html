@@ -8,49 +8,451 @@
       padding-bottom: 0.25in;  
       padding-left: 100px;  
     }  
-  </style> 
-<title>Your Name  |  CS 184</title>
+    #myBtn {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 30px;
+      z-index: 99;
+      font-size: 18px;
+      border: none;
+      outline: none;
+      background-color: #565656;
+      color: white;
+      cursor: pointer;
+      padding: 15px;
+      border-radius: 4px;
+    }
+    #myBtn:hover {
+      background-color: #121212;
+    }
+    body {
+      padding: 100px;
+      width: 1000px;
+      margin: auto;
+      text-align: left;
+      font-weight: 300;
+      font-family: 'Open Sans', sans-serif;
+      color: #121212;
+    }
+    h1, h2, h3, h4 {
+      font-family: 'Source Sans Pro', sans-serif;
+    }
+</style>
+
+<script>
+window.onscroll = function() {scrollFunction()};
+
+function scrollFunction() {
+  if (document.body.scrollTop > 1840 || document.documentElement.scrollTop > 1840) {
+    document.getElementById("myBtn").style.display = "block";
+  } else {
+    document.getElementById("myBtn").style.display = "none";
+  }
+}
+
+function topFunction() {
+  document.body.scrollTop = 100;
+  document.documentElement.scrollTop = 100;
+}
+</script>
+
+<title>Jonathan Sun |  CS 184</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <link rel="stylesheet" type="text/css" href="style.css" media="screen" />
 </head>
 <body>
 <br />
-<h1 align="middle">Assignment 3: PathTracer</h1>
-    <h2 align="middle">Your Name</h2>
+<h1 align="middle">CS 184 Assignment 3-2: PathTracer Intensifies</h1>
+    <h2 align="middle">Jonathan Sun</h2>
+    <button onclick="topFunction()" id="myBtn" title="Go to top">Top</button>
 
-    <div class="padded">
-        <p>Use this section to write an overview of the assignment. All of the text in your write-up should be <em>in your own words</em>. If you need to add additional HTML features to this document, you can search the <a href="http://www.w3schools.com/">http://www.w3schools.com/</a> website for instructions. To edit the HTML, you can just copy and paste existing chunks and fill in the text and image file names appropriately.</p>
-        <o>The website writeup is intended to be a self-contained walkthrough of the assignment: we want this to be a piece of work which showcases your understanding of relevant concepts through both mesh images as well as written explanations about what you did to complete each part of the assignment. Try to be as clear and organized as possible when writing about your own output files or extensions to the assignment. We want to understand what you've achieved and how you've done it!</p> 
-        <p>If you are well-versed in web development, feel free to ditch this template and make a better looking page. Just make sure that you include all the components as we've laid them out here. </p>
+    <h2 align="middle">Table of Contents</h2>
+    <ul>
+      <li><b><a href="#part0">Project Overview</a></b></li>
+      <li><b><h3>Part 1: Mirror and Glass BSDFs</h3></b>
+        <ul>
+          <li><a href="#part1_1"><i>Implementation</i></a></li>
+          <li><a href="#part1_2"><i>Effects of Maximum Ray Depth on Glass and Mirror Materials</i></a></li>
+        </ul>
+      </li>
+      <li><b><h3>Part 2: Microfacet BSDFs</h3></b>
+        <ul>
+          <li><a href="#part2_1"><i>Implementation</i></a></li>
+          <li><a href="#part2_2"><i>Hemisphere vs. Importance Sampling in Microfacet BSDFs</i></a></li>
+          <li><a href="#part2_3"><i>Effects of Roughness on Microfacet Surfaces</i></a></li>
+          <li><a href="#part2_4"><i>Custom Materials</i></a></li>
+        </ul>
+      </li>
+      <li><b><h3>Part 3: Direct Illumination</h3></b>
+        <ul>
+          <li><a href="#part3_1"><i>Environmental Lighting</i></a></li>
+          <li><a href="#part3_2"><i>How and Why Environmental Lighting Works</i></a></li>
+          <li><a href="#part3_3"><i>Hemisphere vs. Importance Sampling for Environmental Lighting</i></a></li>
+        </ul>
+      </li>
+      <li><b><h3>Part 4: Global Illumination</h3></b>
+        <ul>
+          <li><a href="#part4_1"><i>Pinhole vs. Thin Lens for Camera Models</i></a></li>
+          <li><a href="#part4_2"><i>Effects of Focal Distance on Thin Lens Renders</i></a></li>
+          <li><a href="#part4_3"><i>Effects of Apeture Radius on Thin Lens Renders</i></a></li>
+        </ul>
+      </li>
+    </ul>
 
-    <h2 align="middle">Part 1: Ray Generation and Intersection</h2>
-        <p>Describe what you did in Part 1. etc...</p>
+    <h2 align="middle"><a name="part0">Project Overview</a></h2>
+        <p>I implemented several more useful features on top of those added in project 3-1 such that the pathtracer is able to render a wider variety of materials and environments. Not only is the pathtracer able to render mirror, glossy (microfacet), and glass materials, but it is also capable of rendering environments with environmental light sources as well as with depth of field parameters that simulate a thin lens camera. Debugging these parts got to be quite the pain, especially when trying to figure out parameters to use to show depth of field working. However, all this work was worth being able to witness cool things get rendered! Also, thank god adaptive sampling exists.</p>
+
+    <h2 align="middle">Part 1: Mirror and Glass BSDFs</h2>
+        <h3 align="middle"><a name="part1_1">Implementation</a></h3>
+        <p>Fundamental to implementing a mirror BSDF is the <b>BSDF::reflect</b> function, which generates an input ray given an output ray with the same angle with the normal but in the opposite azimuthal direction. This amounts to a trivial negation of azimuthal coordinates in the object's coordinate space. Since mirror BSDFs are classified as <i>delta BSDFs</i>, they are intended to solely convey light from other locations and therefore do not need the <b>MirrorBSDF::f</b> function, instead utilizing <b>MirrorBSDF::sample_f</b> to determine where a traced ray goes next after hitting a mirror. Contrary to what the name suggests, <b>MirrorBSDF::sample_f</b> is entirely deterministic (one outcome with a PDF of 1) and simply uses <b>BSDF::reflect</b> to "sample" the incident vector from the given exitant vector before returning the material's reflectance scaled by the inverse of the cosine of the incident angle for the purpose of canceling out the Lambert's law cosine term in incoming radiance calculation. A thing of note about delta BSDFs is that intersected surfaces with such BSDFs in the <b>PathTracer::at_least_one_bounce_radiance</b> function directly call <b>PathTracer::zero_bounce_radiance</b> in order to factor in radiance coming from any lights (which also use delta BSDFs). This creates the reflections of the rectangular ceiling light seen in the images on the section below.</p>
+
+        <p>Likewise, glass BSDFs are reliant on the <b>BSDF::refract</b>, which performs refraction in accordance to Snell's law:</p>
+        <p align="middle"><pre align="middle">eta_1 * sin(theta_1) = eta2 * sin(theta_2)</pre></p>
+        <p align="middle"><pre align="middle">The etas are indices of refraction for materials on both sides of the surface, while the thetas are angles with the normal axis.</pre></p>
+        <p>We assume that the vacuum has an IOR of 1 and will invert the passed-in IOR if the exitant vector has a positive dot product with the surface normal (i.e. the exitant vector points outside of the material). If the exitant vector points within the material, then <i>total internal reflection</i> happens if the product between the IOR and the sine of the exitant angle (with the normal's axis) exceeds 1 and is therefore impossible to achieve with any incident angle. Just like a mirror BSDF, glass BSDFs are delta BSDFs and therefore do not implement <b>GlassBSDF::f</b>. Unlike mirror BSDFs however, the <b>MirrorBSDF::sample_f</b> function is a bit more complicated in that it follows the below procedure:</p>
+
+        <ol>
+            <li><b>Does the incident ray encounter total internal reflection?</b> (this is why <b>BSDF::refract</b> returns a boolean)
+                <ul>
+                    <li>If yes, use <b>BSDF::reflect</b> to sample the incident ray, set the PDF to 1, and return what a mirror BSDF would return.</li>
+                    <li>If no, go to the next step.</li>
+                </ul>
+            </li>
+            <li><b>We compute a probability using Schlick's approximation:</b>
+                <pre>Given index of refraction IOR > 1 and incidence angle theta_i,</pre>
+                <pre>RO = (IOR - 1) / (IOR + 1)</pre>
+                <pre>Probability of reflection = R0 + (1-R0) * (1-cos(theta_i))^5</pre>
+                <b>Then, we do a coin flip using that probability for the outcome of the flip returning true.</b>
+                <ul>
+                    <li>If true, use <b>BSDF::reflect</b> to sample the incident ray, set the PDF to the approximation, and return what a mirror BSDF would return but multiplied by the PDF.</li>
+                    <li>If false, keep using <b>BSDF::refract</b> to sample the incident ray, set the PDF to one minus the approximation, and return the product of the PDF, <i>transmittance</i>, and inverses of the both the cosine of the incident angle as well as the square of the IOR. The IOR is factored in to simulate how surface crossings with higher IORs tend to concentrate light rays and those with lower IORs tend to disperse said rays.</li>
+                </ul>
+            </li>
+        </ol>
+
+        <p>Thinking about my efforts to implement these materials back in project 3-1, I had a functional mirror BSDF and got most of the <b>GlassBSDF::sample_f</b> function down correctly. However, I missed out on having delta materials only return nonzero spectrums on <b>BSDF::sample_f</b> as well as scaling the output spectrum for a glassBSDF by the IOR in the refractive case. These things being left out could have contributed to significantly increased sampling noise (and bright specks) whenever I tried to render glass materials in project 3-1.</p>
+
+        <h3 align="middle"><a name="part1_2">Effects of Maximum Ray Depth on Glass and Mirror Materials</a></h3>
+
+        <p>Since both spheres have delta BSDFs, they appear to be pitch black given max ray depths of 0 and 1 due to not emitting any spectrum for their <b>BSDF::f</b> functions. As max ray depth increases, both bounces of light among and between the two spheres get captured, starting with direct reflections of light and progressing to internal refraction and even refraction of light rays reflected off of the mirror sphere. Some observations of note are:</p>
+
+        <ul>
+            <li>At max ray depth of 2, the rectangular light is reflected by both balls, since the path from the light to the surface of the spheres then to the camera requires 2 bounces.</li>
+            <li>Also at max ray depth of 2, the mirror ball is able to reflect light coming from the diffuse wall surfaces, since it takes two bounces of light rays for the light to travel from the light to the walls then to the mirror before reaching the camera. </li>
+            <li>At max ray depth of 3, the glass ball is finally able to display refracted light from the surrounding diffuse walls, as it takes three bounces of light rays to travel from the light to the wall then through <i>two</i> surfaces of the glass ball before reaching the camera. Do note that there's still some light not captured around the edges of the ball due to total internal reflection.</li>
+            <li>At max ray depths of 4 and 5, the glass ball transmits the light from the source, as it takes that many bounces for a path from the light to two contact points with the glass ball then to the floor/walls and back to the camera. A depth of 5 adds a second circle of light refracted from the glass ball onto the wall to the right.</li>
+            <li>At max ray depth of 300, the refracted circles of light are now smoother, and the edges of the glass balls are noticeably smoother as more internal reflections are captured.</li>
+        </ul>
+
         <div align="center">
             <table style="width=100%">
+                <figcaption align="middle"><b>NOTE: <i>All images in this table were rendered with 4 samples per light and 1024 samples per pixel.</i></b></figcaption>
                 <tr>
-                    <td align="middle">
-                    <img src="images/example_image.png" width="480px" />
-                    <figcaption align="middle">Results Caption: my bunny is the bounciest bunny</figcaption>
+                    <td>
+                        <img src="images/spheres_ray_0.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 1.1:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 0.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/spheres_ray_1.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 1.2:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 1.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/spheres_ray_2.png" align="middle" width=500px"/>
+                        <figcaption align="middle"><b>Fig 1.3:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 2.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/spheres_ray_3.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 1.4:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 3.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/spheres_ray_4.png" align="middle" width=500px"/>
+                        <figcaption align="middle"><b>Fig 1.5:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 4.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/spheres_ray_5.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 1.6:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 5.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/spheres_ray_300.png" align="middle" width=500px"/>
+                        <figcaption align="middle"><b>Fig 1.7:</b> <i>sky/CBspheres.dae</i> rendered with max ray depth of 300.</figcaption>
+                    </td>
                 </tr>
             </table>
         </div>
-        <p>Here is an example of how to include a simple formula:</p>
-        <p align="middle"><pre align="middle">a^2 + b^2 = c^2</pre></p>
-        <p>or, alternatively, you can include an SVG image of a LaTex formula.</p>
-        <p>This time it's your job to copy-paste in the rest of the sections :)</p>
 
-
-
-    <h2 align="middle">A Few Notes On Webpages</h2>
-        <p>Here are a few problems students have encountered in the past. You will probably encounter these problems at some point, so don't wait until right before the deadline to check that everything is working. Test your website on the instructional machines early!</p>
+    <h2 align="middle">Part 2: Microfacet BSDFs</h2>
+        <h3 align="middle"><a name="part2_1">Implementation</a></h3>
+        <p>Microfacet BSDFs allow a pathtracer to render glossy, metallic surfaces in a more realistic fashion (compared to simply averaging between a mirror and diffuse BSDF). Such BSDFs are not delta BSDFs; therefore, <b>MicrofacetBSDF::f</b> returns a spectrum based on the following formula:</p>
+        <p align="middle"><pre align="middle">result = F(wi) * G(wo, wi) * D(h) / (4 * dot(wo, wi))</pre></p>
+        <p>Here's a description of each of the variables used in the formula:</p>
         <ul>
-        <li>Your main report page should be called index.html.</li>
-        <li>Be sure to include and turn in all of the other files (such as images) that are linked in your report!</li>
-        <li>Use only <em>relative</em> paths to files, such as <pre>"./images/image.jpg"</pre>
-        Do <em>NOT</em> use absolute paths, such as <pre>"/Users/student/Desktop/image.jpg"</pre></li>
-        <li>Pay close attention to your filename extensions. Remember that on UNIX systems (such as the instructional machines), capitalization matters. <pre>.png != .jpeg != .jpg != .JPG</pre>
-        <li>Be sure to adjust the permissions on your files so that they are world readable. For more information on this please see this tutorial: <a href="http://www.grymoire.com/Unix/Permissions.html">http://www.grymoire.com/Unix/Permissions.html</a></li>
-        <li>And again, test your website on the instructional machines early!</li>
+            <li><b>wi</b> and <b>wo</b> are unit incident and exitant vectors coming out of a surface's intersection point.</li>
+            <li><b>h</b> is the "half vector" computed as the unit vector in the direction of the sum of the incident and exitant vectors. This vector bisects the angle formed by the incident and exitant vectors.</li>
+            <li><b>F(wi)</b> is the Fresnel term, which generates a spectrum based on a set of parameters specific to the microfacet material. The formula behind generating the spectrum is outlined in the project spec.</li>
+            <li><b>G(wo, wi)</b> is the shadow-masking term, which returns a scalar term in between 0 and 1 based on starter code.</li>
+            <li><b>D(h)</b> is the normal distribution term, which returns the scalar value of a Beckmann normal distribution function based on the angle between the half-vector and the normal.</li>
+        </ul>
+
+        <p>The process behind importance-sampling-driven <b>MicrofacetBSDF::sample_f</b> gets complicated. First, we randomly sample a half vector (using a roughness parameter) using formulae described in the project spec before computing the incident vector from the given exitant vector and sampled half vector. Next, we use another elaborate formula mentioned in the project spec to compute the PDF from the half vector, incident vector, and the aforementioned roughness parameter. Finally the resulting spectrum is returned as a call to <b>MicrofacetBSDF::f</b> using the exitant and incident vectors are arguments. The result of the sampling process is that light is scattered more diffusely around when a light ray hits the surface at a shallow angle and less so when at a steep angle, creating the effect of glossiness on the surface.</p>
+
+        <h3 align="middle"><a name="part2_2">Hemisphere vs. Importance Sampling in Microfacet BSDFs</a></h3>
+        <p>A naïve implementation of <b>MicrofacetBSDF::sample_f</b> simply uses a uniform hemisphere sampler to compute the incident vector. This approach falls short in terms of performance compared to importance sampling in that hemisphere sampling is more likely to sample parts of the hemisphere that do not contribute much to the incoming radiance, leading to regions with large contributions to radiance sometimes being left out. The result of this is that it noticeably takes longer for hemisphere sampling to converge compared to importance sampling, as can be seen in the differencein noise between the two images below:</p>
+
+        <div align="center">
+            <table style="width=100%">
+                <figcaption align="middle"><b>NOTE: <i>All images in this table were rendered with 64 samples per pixel.</i></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/bunny_cu_hemi.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 2.1:</b> <i>sky/CBbunny_microfacet_cu.dae</i> rendered with hemisphere BSDF sampling.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/bunny_cu_importance.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 2.2:</b> <i>sky/CBbunny_microfacet_cu.dae</i> rendered with importance BSDF sampling.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3 align="middle"><a name="part2_3">Effects of Roughness on Microfacet Surfaces</a></h3>
+        <p>As roughness increases, the material appears to be more and more diffuse. On the other hand, as roughness decreases, the surface becomes glossier, with stronger contrast between the colors of reflected light. Decreasesd roughness also has the side effect of increasing convergence time.</p>
+
+        <div align="center">
+            <table style="width=100%">
+                <figcaption align="middle"><b>NOTE: <i>All images in this table were rendered with 1024 samples per pixel.</i></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/dragon_0_5.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 2.3:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with roughness = 0.5.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/dragon_0_25.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 2.4:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with roughness = 0.25.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/dragon_0_05.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 2.5:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with roughness = 0.05.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/dragon_0_005.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 2.6:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with roughness = 0.005.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3 align="middle"><a name="part2_4">Custom Materials</a></h3>
+        <p>By looking up eta (refractive index) and k values (extinction coefficient) for wavelengths of red, green, and blue light, one can enter these values into a .dae file to give it a custom material. In this case, I decided to select beryllium as the custom material, which yields a gray metallic quality when used on <i>sky/CBbunny.dae</i>. The specific eta and k values used for beryllium, as specified in <a href="https://refractiveindex.info/?shelf=main&book=Be&page=Rakic-BB">this webpage</a>, are as follows:</p>
+
+        <div align="center">
+            <table style="width=100%">
+                <figcaption align="middle"><u><b>Refractive coefficients for beryllium.</b></u></figcaption>
+                <tr>
+                    <td>
+                        <br/>
+                    </td>
+                    <td>
+                        <b>Red Light</b> (614 nm)
+                    </td>
+                    <td>
+                        <b>Green Light</b> (549 nm)
+                    </td>
+                    <td>
+                        <b>Blue Light</b> (466 nm)
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Refractive index, η</b>
+                    </td>
+                    <td>
+                        <i>3.3875</i>
+                    </td>
+                    <td>
+                        <i>3.3093</i>
+                    </td>
+                    <td>
+                        <i>3.1268</i>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <b>Extinction coefficient, k</b>
+                    </td>
+                    <td>
+                        <i>3.1685</i>
+                    </td>
+                    <td>
+                        <i>3.1344</i>
+                    </td>
+                    <td>
+                        <i>3.1245</i>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div align="center">
+            <table style="width=100%">
+                <tr>
+                    <td>
+                        <img src="images/bunny_be.png" align="middle" width="800px"/>
+                        <figcaption align="middle"><b>Fig 2.7:</b> <i>sky/CBbunny_microfacet_be.dae</i> rendered with 1024 samples per pixel and 4 samples per light.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+    <h2 align="middle">Part 3: Environmental Lighting</h2>
+        <h3 align="middle"><a name="part3_1">Implementation</a></h3>
+        <p>The code for this part is implemented in the file <b>static_scene/environmental_light.cpp</b>. Here, we fill in the <b>EnvironmentLight::sample_dir</b> function by converting the input ray into theta-phi and later XYZ coordinates that can then be interpolated into a location on the enviromental light's texture using the existing <b>EnvironmentLight::bilerp</b> function.</p>
+
+        <p>Next, we implement uniform sampling in the <b>EnvironmentLight::sample_L</b> function by setting the incident vector to be a vector uniformly sampled from a hemisphere before converting the vector into theta-phi coordinates and then later UV coordinates on which <b>EnvironmentLight::bilerp</b> can be called in order to yield an output spectrum.</p>
+
+        <p>Finally, we replace uniform sampling with importance sampling in the <b>EnvironmentLight::sample_L</b> function. This task consists of two parts to handle:</p>
+        <ul>
+            <li><b>Set up probability data in EnvironmentLight::init()</b>
+                <ul>
+                    <li>Calculate the PDF of the environment map by first setting each entry of the map PDF to be the corresponding environment map entry's illumination multiplied by the sine of an angle dependent on the zenith angle. In the meantime, keep track of the sume of all the PDF entries before later dividing every entry by the total sum so that the sum of entries in the PDF is 1.</li>
+                    <li>Compute the marginal distribution for y, i.e. the probability that a sampled location has a y value of a certain value or less. We keep track of the sum of PDF values and iterate row-by-row (slowly increasing y), setting the next value in the marginal probability array to be the sum after completing a column.</li>
+                    <li>Calculate the conditional distribution for x given y by first finding the PDF of the marginal y array by mapping each value of the array in the following fashion:
+                    <p align="middle"><pre align="middle">PDF[i] = marginal[i] - (i == 0 ? 0 : marginal[i-1])</pre></p>
+                    Then, given the marginal PDF, we compute the conditional probability for a environment map location (i, j) as the environmental map PDF value at that location divided by the marginal PDF value for corresponding to j.
+                    </li>
+                    <li>Optionally, save a probability debug image whose R and G values are dependent on marginal y and conditional probabilities, respectively. This part is already done in the starter code.</li>
+                </ul>
+            </li>
+            <li><b>Do importance sampling in EnvironmentLight::sample_L</b>
+                <ul>
+                    <li>Sample from a uniform grid values (x,y).</li>
+                    <li>Initialize a location (i,j) at (0,0)</li>
+                    <li>While the marginal probability for j is less than y, increment j. While the conditional probability for i and j is less than x, increment i. This effectively samples from a grid_based PDF with variable probability weights.</li>
+                    <li>Set the incident vector to be (i,j) converted into a direction vector.</li>
+                    <li>Set the PDF to be the PDF corresponding to (i, j) in the environment map multiplied by the dimensions of the environment map and divided by the product of 2, pi squared, and the sin of the incident angle.</li>
+                    <li>Return as the output spectrum the environment map illumination at location (i, j), no bilerping needed!</li>
+                </ul>
+            </li>
+        </ul>
+
+        <div align="center">
+            <table style="width=100%">
+                <tr>
+                    <td>
+                        <img src="images/probability_debug.png" align="middle" width="800px"/>
+                        <figcaption align="middle"><b>Fig 3.1:</b> Probability debug picture for <i>grace.exr</i>.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3 align="middle"><a name="part3_2">How and Why Environmental Lighting Works</a></h3>
+        <p>Environmental lighting works by mapping a texture image (called an environment map) to a hemisphere forming the background of the render. Any location within the environment map produces an illumination corresponding to the color of that point in the environment map. Rays are sampled from this environmental light in a direction perpendicular to and inward from the hemisphere. Next, pathtracing continues as usual for the ray. This type of lighting is an effective way of rendering scenes that interact with backgrounds without having to model the shapes of the background or add other light sources.</p>
+
+        <h3 align="middle"><a name="part3_3">Hemisphere vs. Importance Sampling for Environmental Lighting</a></h3>
+        <p>As expected, it takes significantly longer for hemisphere sampling to converge compared to importance sampling, as evidence by the increased amount of noise present in the hemisphere sampling pictures when compared to the importance sampling pictures. Another thing of note is how the microfacet surface is noisier compared to the diffuse surface under importance sampling but appears slightly less noisy than the diffuse surface under hemisphere sampling.</p>
+
+                <div align="center">
+            <table style="width=100%">
+                <figcaption align="middle"><b>NOTE: <i>All images in this table were rendered with 64 samples per pixel.</i></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/bunny_grace_hemi.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.2:</b> <i>sky/bunny_unlit.dae</i> rendered with environment <i>grace.exr</i>.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/bunny_grace_importance.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.3:</b> <i>sky/bunny_unlit.dae</i> rendered with environment <i>grace.exr</i>.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/bunny_grace_cu_hemi.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.4:</b> <i>sky/bunny_microfacet_cu_unlit.dae</i> rendered with environment <i>grace.exr</i>.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/bunny_grace_cu_importance.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.5:</b> <i>sky/bunny_microfacet_cu_unlit.dae</i> rendered with environment <i>grace.exr</i></figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+    <h2 align="middle">Part 4: Depth of Field</h2>
+        <h3 align="middle"><a name="part4_1">Pinhole vs. Thin Lens for Camera Models</a></h3>
+        <p>The key difference between a pinhole and thin lens is what happens at the camera space plane at z = 0. All rays in a pinhole camera model intersect the camera space origin, whereas rays in the thin lens model can intersect anywhere within the lens (apeture) radius of the camera space origin on the z = 0 plane. As a result, we modify ray generation for a thin lens camera model by uniformly sampling a point on the lens area and returning a unit ray starting at the sampled point and pointing towards where the pinhole camera model ray would intersect the plane z = d given a positive focal distance d. The focal distance determines where all the sampled ray converge in 3D space, creating the effect of objects near the focal distance away from the lens plane having sharper detail and objects further away being more blurred. One thing to note is that an apeture radius of 0 causes a thin lens model to become a pinhole model.</p>
+
+        <h3 align="middle"><a name="part4_2">Effects of Focal Distance on Thin Lens Renders</a></h3>
+        <p>As focal distance increases, the areas of focus (less blurring) become farther away from the camera, moving from the front of the dragon towards the corner behind the dragon.</p>
+
+        <div align="center">
+            <table style="width=100%">
+                <figcaption align="middle"><b>NOTE: <i>All images in this table were rendered with apeture radius = 0.04.</i></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/dragon_focal_0.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.1:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with focal distance = 1.2.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/dragon_focal_1.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.2:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with focal distance = 1.5.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/dragon_focal_2.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.3:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with focal distance = 1.7.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/dragon_focal_3.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.4:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with focal distance = 1.9.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/dragon_focal_4.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.5:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with focal distance = 3.2.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <h3 align="middle"><a name="part4_3">Effects of Apeture Radius on Thin Lens Renders</a></h3>
+        <p>As apeture radius increases, the rate at which details outside get more blurry in respect to distance from the focal plane increases. Note how the same general area around the top of the dragon's head remains relatively unblurred throughout all the renders below.</p>
+
+        <div align="center">
+            <table style="width=100%">
+                <figcaption align="middle"><b>NOTE: <i>All images in this table were rendered with focal distance = 1.5.</i></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/dragon_apeture_0.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.6:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with apeture radius = 0.0.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/dragon_apeture_2.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.7:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with apeture radius = 0.04.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/dragon_apeture_3.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.8:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with apeture radius = 0.08.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/dragon_apeture_4.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 4.9:</b> <i>sky/CBdragon_microfacet_au.dae</i> rendered with apeture radius = 0.16.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
 </div>
 </body>
 </html>

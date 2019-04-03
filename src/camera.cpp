@@ -165,6 +165,8 @@ void Camera::load_settings(string filename) {
     file >> c2w(i/3, i%3);
   file >> screenW >> screenH >> screenDist;
   file >> focalDistance >> lensRadius;
+  cout << "Focal Distance: " << focalDistance << endl;
+  cout << "Lens Radius: " << lensRadius << endl;
   cout << "[Camera] Loaded settings from " << filename << endl;
 }
 
