@@ -142,6 +142,7 @@ function topFunction() {
             <li>Also at max ray depth of 2, the mirror ball is able to reflect light coming from the diffuse wall surfaces, since it takes two bounces of light rays for the light to travel from the light to the walls then to the mirror before reaching the camera. </li>
             <li>At max ray depth of 3, the glass ball is finally able to display refracted light from the surrounding diffuse walls, as it takes three bounces of light rays to travel from the light to the wall then through <i>two</i> surfaces of the glass ball before reaching the camera. Do note that there's still some light not captured around the edges of the ball due to total internal reflection.</li>
             <li>At max ray depths of 4 and 5, the glass ball transmits the light from the source, as it takes that many bounces for a path from the light to two contact points with the glass ball then to the floor/walls and back to the camera. A depth of 5 adds a second circle of light refracted from the glass ball onto the wall to the right.</li>
+            <li>At max ray depths of 4 and 5, the glass ball in the mirror ball's reflection starts to show refracted light as well, and a max ray depth of 5 shows that image of the glass ball starting to have circles of light form nearby it.</li>
             <li>At max ray depth of 300, the refracted circles of light are now smoother, and the edges of the glass balls are noticeably smoother as more internal reflections are captured.</li>
         </ul>
 
