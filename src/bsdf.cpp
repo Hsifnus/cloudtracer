@@ -222,4 +222,14 @@ Spectrum EmissionBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) {
   return Spectrum();
 }
 
+Spectrum CloudBSDF::f(const Vector3D& wo, const Vector3D& wi) {
+  return reflectance / PI;
+}
+
+Spectrum CloudBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) {
+  *pdf = 1.0 / PI;
+  *wi  = sampler.get_sample(pdf);
+  return Spectrum();
+}
+
 } // namespace CGL

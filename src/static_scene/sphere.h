@@ -82,6 +82,8 @@ class Sphere : public Primitive {
   */
   void drawOutline(const Color& c, float alpha) const;
 
+  const SphereObject* object; ///< pointer to the sphere object
+
  private:
 
   /**
@@ -90,8 +92,6 @@ class Sphere : public Primitive {
    * and the larger in t2.
    */
   bool test(const Ray& ray, double& t1, double& t2) const;
-
-  const SphereObject* object; ///< pointer to the sphere object
 
   Vector3D o; ///< origin of the sphere
   double r;   ///< radius

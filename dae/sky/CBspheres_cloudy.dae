@@ -112,12 +112,9 @@
       </profile_COMMON>
       <extra>
         <technique profile="CGL">
-          <glass>
+          <cloud>
             <reflectance>1 1 1</reflectance>
-            <transmittance>1 1 1</transmittance>
-            <roughness>0</roughness>
-            <ior>1.45</ior>
-          </glass>
+          </cloud>
         </technique>
       </extra>
     </effect>

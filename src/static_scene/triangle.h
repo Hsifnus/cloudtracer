@@ -71,9 +71,9 @@ namespace CGL { namespace StaticScene {
    */
   void drawOutline(const Color& c, float alpha) const;
 
- private:
-
   const Mesh* mesh;   ///< pointer to the mesh the triangle is a part of
+
+ private:
 
   size_t v1; ///< index into the mesh attribute arrays
   size_t v2; ///< index into the mesh attribute arrays

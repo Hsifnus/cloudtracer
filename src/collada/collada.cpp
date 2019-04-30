@@ -881,6 +881,11 @@ void ColladaParser::parse_material ( XMLElement* xml, MaterialInfo& material ) {
           Spectrum reflectance = spectrum_from_string(string(e_reflectance->GetText()));
           BSDF* bsdf = new MirrorBSDF(reflectance);
           material.bsdf = bsdf;
+        } else if (type == "cloud") {
+          XMLElement *e_reflectance  = get_element(e_bsdf, "reflectance");
+          Spectrum reflectance = spectrum_from_string(string(e_reflectance->GetText()));
+          BSDF* bsdf = new CloudBSDF(reflectance);
+          material.bsdf = bsdf;
         } else if (type == "microfacet") {
             XMLElement *e_reflectance  = get_element(e_bsdf, "reflectance");
             XMLElement *e_alpha = get_element(e_bsdf, "alpha");

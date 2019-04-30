@@ -1,6 +1,7 @@
 #include "pathtracer.h"
 #include "bsdf.h"
 #include "ray.h"
+#include "slab.h"
 
 // #include "lenscamera.h"
 
@@ -21,6 +22,8 @@
 #include "static_scene/light.h"
 
 #define RR 0.7
+#define COLLECTOR_NUM_SAMPLES 16
+#define COLLECTOR_ITER_LIMIT 4
 
 using namespace CGL::StaticScene;
 
@@ -684,12 +687,16 @@ Spectrum PathTracer::at_least_one_bounce_radiance(const Ray&r, const Intersectio
       Intersection next_isect;
       const Ray sampleRay = Ray(hit_p + EPS_D * wi, wi, INF_D, r.depth-1);
       if (bvh->intersect(sampleRay, &next_isect)) {
-        Spectrum rad_in = at_least_one_bounce_radiance(sampleRay, next_isect);
-        if (isect.bsdf->is_delta())
-          rad_in += zero_bounce_radiance(sampleRay, next_isect);
-        if (pdf != 0.0f) {
-          float cosThetai = (fabs(w_in[2]) / w_in.norm());
-          L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
+        if (isect.bsdf->is_cloud()) {
+          L_out += basic_cloud_slab_radiance(sampleRay, next_isect);
+        } else {
+          Spectrum rad_in = at_least_one_bounce_radiance(sampleRay, next_isect);
+          if (isect.bsdf->is_delta())
+            rad_in += zero_bounce_radiance(sampleRay, next_isect);
+          if (pdf != 0.0f) {
+            float cosThetai = (fabs(w_in[2]) / w_in.norm());
+            L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
+          }
         }
       }
     }
@@ -729,6 +736,97 @@ Spectrum PathTracer::est_radiance_global_illumination(const Ray &r) {
       return zero_bounce_radiance(r, isect) + at_least_one_bounce_radiance(r, isect);
   }
   return normal_shading(isect.n);
+}
+
+Spectrum PathTracer::basic_cloud_slab_radiance(const Ray &r, const StaticScene::Intersection& isect) {
+  Matrix3x3 o2w;
+  make_coord_space(o2w, isect.n);
+  Matrix3x3 w2o = o2w.T();
+
+  Vector3D hit_p = r.o + r.d * isect.t;
+  Vector3D w_out = w2o * (-r.d);
+  Spectrum L_out = Spectrum();
+
+  if (r.depth == 0) {
+    return L_out;
+  }
+
+  if (!isect.bsdf->is_delta() && (this->mode <= 3 || max_ray_depth - r.depth + 3 == this->mode)) {
+    L_out = one_bounce_radiance(r, isect);
+  }
+
+  if (r.depth > 1) {
+    float pdf = 0.0f;
+    Vector3D wi = Vector3D();
+    Vector3D w_in = Vector3D();
+    float distToLight = 0.0f;
+    scene->lights[0]->sample_L(hit_p, &wi, &distToLight, &pdf);
+    Matrix3x3 o2w_wi;
+    make_coord_space(o2w_wi, wi);
+
+    Collector c = Collector(hit_p, 1.0, o2w_wi, isect.primitive);
+    Intersection next_isect;
+    double delta = 0.0;
+
+    Ray next_ray = Ray(hit_p + EPS_D * wi, wi);
+    bool intersects = bvh->intersect(next_ray, &next_isect);
+    if (intersects && c.project(next_ray, next_isect, delta)) {
+
+      Slab slab = c.generate_slab(c.mean);
+      Collector c_next = slab.basic_sample();
+      scene->lights[0]->sample_L(c_next.mean, &wi, &distToLight, &pdf);
+      next_ray = Ray(c_next.mean + EPS_D * wi, wi);
+      Ray next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
+
+      int count = 0;
+      while ((!bvh->intersect(next_ray, &next_isect) || !c.project(next_ray, next_isect, delta)) 
+        && (!bvh->intersect(next_inv_ray, &next_isect) || !c.project(next_ray, next_isect, delta))) {
+
+        Collector c_next = slab.basic_sample();
+        next_ray = Ray(c_next.mean + EPS_D * wi, wi);
+        next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
+        count++;
+      }
+
+      Spectrum L_direct = one_bounce_radiance(next_ray, next_isect);
+
+      Spectrum L_collect = Spectrum();
+      for (int i = 0; i < COLLECTOR_NUM_SAMPLES; i++) {
+        if (coin_flip(RR)) {
+          Vector3D o_next = c_next.sample();
+          Spectrum sample_bsdf = next_isect.bsdf->sample_f(w_out, &w_in, &pdf);
+          Vector3D d_next = c_next.origin2w.T() * w_in;
+          next_ray = Ray(o_next + EPS_D * d_next, d_next);
+
+          if (bvh->intersect(next_ray, &next_isect)) {
+            next_ray.depth = r.depth-1;
+            Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
+            if (next_isect.bsdf->is_delta())
+              rad_in += zero_bounce_radiance(next_ray, next_isect);
+            if (pdf != 0.0f) {
+              float cosThetai = (fabs(w_in[2]) / w_in.norm());
+              L_collect += sample_bsdf * cosThetai * rad_in / (RR * pdf);
+              // std::cout << sample_bsdf << std::endl;
+            }
+          }
+        }
+      }
+
+      // std::cout << L_out << " + " << L_collect / COLLECTOR_NUM_SAMPLES << " + " << L_direct << std::endl;
+      L_out += L_collect / COLLECTOR_NUM_SAMPLES + L_direct;
+
+    } else if (intersects) {
+      next_ray.depth = r.depth-1;
+      Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
+      Spectrum sample_bsdf = isect.bsdf->sample_f(w_out, &w_in, &pdf);
+      if (pdf != 0.0f) {
+        float cosThetai = (fabs(w_in[2]) / w_in.norm());
+        L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
+      }
+    }
+  }
+
+  return L_out;
 }
 
 Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {
