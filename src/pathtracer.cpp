@@ -23,7 +23,7 @@
 
 #define RR 0.7
 #define COLLECTOR_NUM_SAMPLES 16
-#define COLLECTOR_ITER_LIMIT 4
+#define COLLECTOR_ITER_LIMIT 1024
 
 using namespace CGL::StaticScene;
 
@@ -782,10 +782,19 @@ Spectrum PathTracer::basic_cloud_slab_radiance(const Ray &r, const StaticScene::
       while ((!bvh->intersect(next_ray, &next_isect) || !c.project(next_ray, next_isect, delta)) 
         && (!bvh->intersect(next_inv_ray, &next_isect) || !c.project(next_ray, next_isect, delta))) {
 
-        Collector c_next = slab.basic_sample();
+        if (count >= COLLECTOR_ITER_LIMIT) {
+          c_next = c;
+        } else {
+          c_next = slab.basic_sample();
+        }
+        scene->lights[0]->sample_L(c_next.mean, &wi, &distToLight, &pdf);
         next_ray = Ray(c_next.mean + EPS_D * wi, wi);
         next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
-        count++;
+        if (count >= COLLECTOR_ITER_LIMIT) {
+          break;
+        } else {
+          count++;
+        }
       }
 
       Spectrum L_direct = one_bounce_radiance(next_ray, next_isect);
