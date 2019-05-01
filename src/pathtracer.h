@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <vector>
 #include <algorithm>
+#include <random>
 
 #include "CGL/timer.h"
 
@@ -78,7 +79,8 @@ class PathTracer {
              size_t mode = 3,
              string filename = "",
              double lensRadius = 0.25,
-             double focalDistance = 4.7);
+             double focalDistance = 4.7,
+             double deltaCeiling = 1e-8);
 
   /**
    * Destructor.
@@ -267,6 +269,7 @@ class PathTracer {
   HDRImageBuffer sampleBuffer;   ///< sample buffer
   ImageBuffer frameBuffer;       ///< frame buffer
   Timer timer;                   ///< performance test timer
+  std::default_random_engine gen;
 
   std::vector<int> sampleCountBuffer;   ///< sample count buffer
 
@@ -304,6 +307,8 @@ class PathTracer {
   std::string filename;
 
   double lensRadius, focalDistance;
+
+  double deltaCeiling;
 
 };
 

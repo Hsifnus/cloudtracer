@@ -35,7 +35,8 @@ Application::Application(AppConfig config, bool gl) {
     config.pathtracer_mode,
     config.pathtracer_filename,
     config.pathtracer_lensRadius,
-    config.pathtracer_focalDistance
+    config.pathtracer_focalDistance,
+    config.pathtracer_deltaCeiling
   );
   filename = config.pathtracer_filename;
 }

@@ -14,7 +14,7 @@ class Slab;
 
 class Collector {
  public:
-  Collector(Vector3D m, double v, Matrix3x3 o2w, const StaticScene::Primitive *c) : mean(m), variance(v), origin2w(o2w), cloud(c) { }
+  Collector(Vector3D m, double v, Matrix3x3 o2w, const StaticScene::Primitive *c, std::default_random_engine g) : mean(m), variance(v), origin2w(o2w), cloud(c), gen(g) { }
 
   Vector3D mean;
   double variance;
@@ -31,7 +31,7 @@ class Collector {
 
 class Slab {
  public:
-  Slab(Vector3D o, double t, Matrix3x3 o2w, const StaticScene::Primitive* c): origin(o), thickness(t), origin2w(o2w), cloud(c) { }
+  Slab(Vector3D o, double t, Matrix3x3 o2w, const StaticScene::Primitive* c, std::default_random_engine g): origin(o), thickness(t), origin2w(o2w), cloud(c), gen(g) { }
 
   Vector3D origin;
   double thickness;

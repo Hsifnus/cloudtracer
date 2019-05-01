@@ -63,7 +63,7 @@ bool Collector::project(const Ray &r, const StaticScene::Intersection& isect, do
 Slab Collector::generate_slab(Vector3D origin) {
 	Matrix3x3 w2o = origin2w.T();
 	double thickness = 1.1 * std::abs((w2o * origin)[2]);
-	return Slab(origin, thickness, origin2w, cloud);
+	return Slab(origin, thickness, origin2w, cloud, gen);
 }
 
 Collector Slab::basic_sample() {
@@ -78,7 +78,7 @@ Collector Slab::basic_sample() {
 
 	Vector3D displacement = Vector3D(alpha * std::cos(theta), alpha * std::sin(theta), 0.0);
 
-	return Collector(origin + origin2w * displacement, variance, origin2w, cloud);
+	return Collector(origin + origin2w * displacement, variance, origin2w, cloud, gen);
 
 }
 
