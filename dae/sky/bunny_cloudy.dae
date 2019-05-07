@@ -128,7 +128,7 @@
       <extra>
         <technique profile="CGL">
           <cloud>
-            <reflectance>1.0 1.0 1.0</reflectance>
+            <reflectance>1 1 1</reflectance>
           </cloud>
         </technique>
       </extra>

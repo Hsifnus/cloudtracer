@@ -18,6 +18,7 @@
 #include "image.h"
 #include "work_queue.h"
 #include "intersection.h"
+#include "polar_tex.h"
 
 // #include "lenscamera.h"
 
@@ -196,6 +197,9 @@ class PathTracer {
   Spectrum at_least_one_bounce_radiance(const Ray &r, const StaticScene::Intersection& isect);
 
   Spectrum basic_cloud_slab_radiance(const Ray &r, const StaticScene::Intersection& isect);
+  Spectrum canonical_cloud_slab_radiance(const Ray &r, const StaticScene::Intersection& isect);
+  double ray_march(const Ray &r, const double step_size, double &distance);
+  double estimate_depth(double max_depth, const Ray &r);
 
   Spectrum normal_shading(const Vector3D& n) {
     return Spectrum(n[0],n[1],n[2])*.5 + Spectrum(.5,.5,.5);
@@ -269,7 +273,8 @@ class PathTracer {
   HDRImageBuffer sampleBuffer;   ///< sample buffer
   ImageBuffer frameBuffer;       ///< frame buffer
   Timer timer;                   ///< performance test timer
-  std::default_random_engine gen;
+  std::default_random_engine gen;///< random number generator
+  PolarTex hypertex;
 
   std::vector<int> sampleCountBuffer;   ///< sample count buffer
 

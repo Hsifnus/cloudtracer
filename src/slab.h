@@ -14,20 +14,27 @@ class Slab;
 
 class Collector {
  public:
-  Collector(Vector3D m, double v, Matrix3x3 o2w, const StaticScene::Primitive *c, std::default_random_engine g) : mean(m), variance(v), origin2w(o2w), cloud(c), gen(g) { }
+  Collector(Vector3D m, double v, Matrix3x3 o2w, const StaticScene::Primitive *c, std::default_random_engine g) : mean(m), varianceX(v), varianceY(v), origin2w(o2w), cloud(c), gen(g), order(0) { }
+  Collector(Vector3D m, double vx, double vy, Matrix3x3 o2w, const StaticScene::Primitive *c, std::default_random_engine g) : mean(m), varianceX(vx), varianceY(vy), origin2w(o2w), cloud(c), gen(g), order(0) { }
 
   Vector3D mean;
-  double variance;
+  double varianceX, varianceY;
   Matrix3x3 origin2w;
   const StaticScene::Primitive* cloud;
   std::default_random_engine gen;
+  int order;
 
   Vector3D sample();
   bool same_mesh(const StaticScene::Primitive* other);
   bool project(const Ray &r, const StaticScene::Intersection& isect, double &delta);
   Slab generate_slab(Vector3D origin);
-
 };
+
+inline bool operator==(const Collector &left, const Collector &right) {
+  return left.mean == right.mean && left.varianceX == right.varianceX 
+    && left.varianceY == right.varianceY && left.origin2w[0] == right.origin2w[0]
+    && left.origin2w[1] == right.origin2w[1] && left.origin2w[2] == right.origin2w[2];
+}
 
 class Slab {
  public:
@@ -40,7 +47,7 @@ class Slab {
   std::default_random_engine gen;
 
   Collector basic_sample();
-  std::vector<Collector> transport_sample();
+  std::vector<Collector> transport_sample(const Ray &exit, const Vector3D incident, std::vector<double> &L, BSDF *bsdf, int init_depth);
 
 };
 

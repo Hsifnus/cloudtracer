@@ -30,7 +30,8 @@ if(BUILD_3-1)
 
         # PathTracer
         bsdf.cpp
-	slab.cpp
+	    slab.cpp
+        polar_tex.cpp
         camera.cpp
         sampler.cpp
         bbox.cpp
@@ -72,7 +73,8 @@ else(BUILD_3-1)
 
         # PathTracer
         bsdf.cpp
-	slab.cpp
+    	slab.cpp
+        polar_tex.cpp
         camera.cpp
         sampler.cpp
         pathtracer.cpp

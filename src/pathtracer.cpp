@@ -2,6 +2,7 @@
 #include "bsdf.h"
 #include "ray.h"
 #include "slab.h"
+#include "polar_tex.h"
 
 // #include "lenscamera.h"
 
@@ -20,10 +21,13 @@
 #include "static_scene/sphere.h"
 #include "static_scene/triangle.h"
 #include "static_scene/light.h"
+#include "static_scene/object.h"
 
 #define RR 0.7
 #define COLLECTOR_NUM_SAMPLES 16
-#define COLLECTOR_ITER_LIMIT 1024
+#define COLLECTOR_ITER_LIMIT 10
+#define DELTA_THRESHOLD 1.0
+#define MAX_SCATTER 20
 
 using namespace CGL::StaticScene;
 
@@ -47,7 +51,7 @@ PathTracer::PathTracer(size_t ns_aa,
                        string filename,
                        double lensRadius,
                        double focalDistance,
-                       double deltaCeiling){
+                       double deltaCeiling) : hypertex(PolarTex(42, 21, deltaCeiling, gen)) {
   state = INIT,
   this->ns_aa = ns_aa;
   this->max_ray_depth = max_ray_depth;
@@ -677,7 +681,7 @@ Spectrum PathTracer::at_least_one_bounce_radiance(const Ray&r, const Intersectio
   }
 
   if (isect.bsdf->is_cloud()) {
-    L_out += basic_cloud_slab_radiance(r, isect);
+    L_out += canonical_cloud_slab_radiance(r, isect);
   } else {
 
     // TODO (Part 4.2): 
@@ -741,7 +745,10 @@ Spectrum PathTracer::est_radiance_global_illumination(const Ray &r) {
   return normal_shading(isect.n);
 }
 
+
+
 Spectrum PathTracer::basic_cloud_slab_radiance(const Ray &r, const StaticScene::Intersection& isect) {
+
   Matrix3x3 o2w;
   make_coord_space(o2w, isect.n);
   Matrix3x3 w2o = o2w.T();
@@ -754,115 +761,342 @@ Spectrum PathTracer::basic_cloud_slab_radiance(const Ray &r, const StaticScene::
     return L_out;
   }
 
-  if (r.depth > 1) {
-    float pdf = 0.0f;
-    Vector3D wi = Vector3D();
-    Vector3D w_in = Vector3D();
-    float distToLight = 0.0f;
-    scene->lights[0]->sample_L(hit_p, &wi, &distToLight, &pdf);
-    Matrix3x3 o2w_wi;
-    make_coord_space(o2w_wi, wi);
+  Ray marched = Ray(hit_p + EPS_D * r.d, r.d);
+  double distance;
+  double alpha = ray_march(marched, 0.1, distance);
+  if (coin_flip(alpha)) {
+    hit_p = r.o + r.d * isect.t + r.d.unit() * distance;
+    if (r.depth > 1) {
+      float pdf = 0.0f;
+      Vector3D wi = Vector3D();
+      Vector3D w_in = Vector3D();
+      float distToLight = 0.0f;
+      scene->lights[0]->sample_L(hit_p, &wi, &distToLight, &pdf);
 
-    Matrix3x3 o2w_inv;
-    make_coord_space(o2w_inv, r.d.unit());
+      Matrix3x3 o2w_wi;
+      make_coord_space(o2w_wi, wi);
 
-    Collector c = Collector(hit_p, 1.0, o2w_wi, isect.primitive, gen);
-    Collector c_transmit = Collector(hit_p, 1.0, o2w_inv, isect.primitive, gen);
-    Intersection next_isect;
-    double delta = 0.0; double delta_transmit = 0.0;
+      Matrix3x3 o2w_inv;
+      make_coord_space(o2w_inv, r.d.unit());
 
-    Ray next_ray = Ray(hit_p + EPS_D * wi, wi);
-    bool intersects = bvh->intersect(next_ray, &next_isect);
-    if (intersects && c.project(next_ray, next_isect, delta)) {
+      Collector c = Collector(hit_p, 1.0, o2w_wi, isect.primitive, gen);
+      Collector c_transmit = Collector(hit_p, 1.0, o2w_inv, isect.primitive, gen);
+      Intersection next_isect;
+      double delta = 0.0; double delta_transmit = 0.0;
 
-      Ray transmitted = Ray(hit_p + EPS_D * r.d, r.d);
-      Intersection dummy_isect;
-      bvh->intersect(transmitted, &dummy_isect);
-      c_transmit.project(transmitted, dummy_isect, delta_transmit);
-      double delta_factor = std::min(delta_transmit / this->deltaCeiling, 1.0);
-      
-      Slab slab = c.generate_slab(c.mean);
-      Collector c_next = slab.basic_sample();
-      scene->lights[0]->sample_L(c_next.mean, &wi, &distToLight, &pdf);
-      next_ray = Ray(c_next.mean + EPS_D * wi, wi);
-      Ray next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
+      Ray next_ray = Ray(hit_p + EPS_D * wi, wi);
+      bool intersects = bvh->intersect(next_ray, &next_isect);
+      if (intersects && c.project(next_ray, next_isect, delta)) {
 
-      int count = 0;
-      while ((!bvh->intersect(next_ray, &next_isect) || !c.project(next_ray, next_isect, delta)) 
-        && (!bvh->intersect(next_inv_ray, &next_isect) || !c.project(next_ray, next_isect, delta))) {
-
-        if (count >= COLLECTOR_ITER_LIMIT) {
-          c_next = c;
-        } else {
-          c_next = slab.basic_sample();
-        }
+        Slab slab = c.generate_slab(c.mean);
+        Collector c_next = slab.basic_sample();
         scene->lights[0]->sample_L(c_next.mean, &wi, &distToLight, &pdf);
         next_ray = Ray(c_next.mean + EPS_D * wi, wi);
-        next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
-        if (count >= COLLECTOR_ITER_LIMIT) {
-          break;
-        } else {
-          count++;
+        Ray next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
+
+        int count = 0;
+        while ((!bvh->intersect(next_ray, &next_isect) || !c.project(next_ray, next_isect, delta)) 
+          && (!bvh->intersect(next_inv_ray, &next_isect) || !c.project(next_ray, next_isect, delta))) {
+
+          if (count >= COLLECTOR_ITER_LIMIT) {
+            c_next = c;
+          } else {
+            c_next = slab.basic_sample();
+          }
+          scene->lights[0]->sample_L(c_next.mean, &wi, &distToLight, &pdf);
+          next_ray = Ray(c_next.mean + EPS_D * wi, wi);
+          next_inv_ray = Ray(c_next.mean - EPS_D * wi, -wi);
+          if (count >= COLLECTOR_ITER_LIMIT) {
+            break;
+          } else {
+            count++;
+          }
         }
-      }
 
-      Spectrum L_direct = one_bounce_radiance(next_ray, next_isect);
-      Spectrum L_transmit = Spectrum();
-      Spectrum L_collect = Spectrum();
+        Spectrum L_direct = one_bounce_radiance(next_ray, next_isect);
+        Spectrum L_collect = Spectrum();
 
-      if (coin_flip(delta_factor)) {
         for (int i = 0; i < COLLECTOR_NUM_SAMPLES; i++) {
           
           Vector3D o_next = c_next.sample();
-          Spectrum sample_bsdf = next_isect.bsdf->sample_f(w_out, &w_in, &pdf);
+          Vector3D d_prev = (o_next - r.o).unit();
+          Spectrum sample_bsdf = next_isect.bsdf->sample_f(-d_prev, &w_in, &pdf);
           Vector3D d_next = c_next.origin2w.T() * w_in;
           next_ray = Ray(o_next + EPS_D * d_next, d_next);
 
           if (bvh->intersect(next_ray, &next_isect)) {
-            next_ray.depth = r.depth-1;
-            Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
-            if (next_isect.bsdf->is_delta())
-              rad_in += zero_bounce_radiance(next_ray, next_isect);
-            if (pdf != 0.0f) {
-              float cosThetai = (fabs(w_in[2]) / w_in.norm());
-              L_collect += sample_bsdf * cosThetai * rad_in / (pdf);
-              // std::cout << sample_bsdf << std::endl;
+            if (c_next.same_mesh(next_isect.primitive)) {
+              next_ray.o += (next_isect.t + EPS_D) * next_ray.d;
+              if (bvh->intersect(next_ray, &next_isect)) {
+                next_ray.depth = r.depth-1;
+                Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
+                if (next_isect.bsdf->is_delta())
+                  rad_in += zero_bounce_radiance(next_ray, next_isect);
+                if (pdf != 0.0f) {
+                  float cosThetai = (fabs(w_in[2]) / w_in.norm());
+                  L_collect += hg_phase(w_out, d_prev) * sample_bsdf * cosThetai * rad_in / (pdf);
+                  // std::cout << sample_bsdf << std::endl;
+                }
+              }
+            } else {
+              next_ray.depth = r.depth-1;
+              Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
+              if (next_isect.bsdf->is_delta())
+                rad_in += zero_bounce_radiance(next_ray, next_isect);
+              if (pdf != 0.0f) {
+                float cosThetai = (fabs(w_in[2]) / w_in.norm());
+                L_collect += hg_phase(w_out, d_prev) * sample_bsdf * cosThetai * rad_in / (pdf);
+                // std::cout << sample_bsdf << std::endl;
+              }
             }
           }
           
         }
-        // std::cout << L_out << " + " << L_collect / COLLECTOR_NUM_SAMPLES << " + " << L_direct << std::endl;
         L_out += (L_collect / COLLECTOR_NUM_SAMPLES + L_direct) / RR;
-      } else {      
-        transmitted = Ray(hit_p + EPS_D * r.d, r.d);
-        if (bvh->intersect(transmitted, &next_isect)) {
-          transmitted.o += r.d * (next_isect.t + EPS_D);
-          transmitted.depth = r.depth-1;
-          if (bvh->intersect(transmitted, &next_isect)) {
-            L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
-          } else {
-            transmitted.o -= r.d * (next_isect.t + EPS_D);
-            L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
-          }
-        }
-        // std::cout << L_transmit << std::endl;
-        L_out += L_transmit / RR;
-      }
-
-      // std::cout << delta_factor << " x " << (L_collect / COLLECTOR_NUM_SAMPLES + L_direct) << ", " << L_transmit << std::endl;
-
-    } else if (intersects) {
-      next_ray.depth = r.depth-1;
-      Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
-      Spectrum sample_bsdf = isect.bsdf->sample_f(w_out, &w_in, &pdf);
-      if (pdf != 0.0f) {
-        float cosThetai = (fabs(w_in[2]) / w_in.norm());
-        L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
       }
     }
+  } else {      
+    Spectrum L_transmit = Spectrum();
+    Ray transmitted = Ray(hit_p + EPS_D * r.d, r.d);
+    StaticScene::Intersection next_isect;
+    if (bvh->intersect(transmitted, &next_isect)) {
+      transmitted.o += r.d * (next_isect.t + EPS_D);
+      transmitted.depth = r.depth;
+
+      if (bvh->intersect(transmitted, &next_isect)) {
+        L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
+      } else {
+        transmitted.o -= r.d * (next_isect.t + EPS_D);
+        L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
+      }
+    }
+    L_out += L_transmit / RR;
   }
 
   return L_out;
+}
+
+Spectrum PathTracer::canonical_cloud_slab_radiance(const Ray &r, const StaticScene::Intersection& isect) {
+
+  Matrix3x3 o2w;
+  make_coord_space(o2w, isect.n);
+  Matrix3x3 w2o = o2w.T();
+
+  Vector3D hit_p = r.o + r.d * isect.t;
+  Vector3D w_out = w2o * (-r.d);
+  Spectrum L_out = Spectrum();
+  const Ray exit = Ray(hit_p, r.d);
+  BSDF *cloud = isect.bsdf;
+
+  if (r.depth == 0 || coin_flip(1.0 - RR)) {
+    return L_out;
+  }
+
+  Ray marched = Ray(hit_p + EPS_D * r.d, r.d);
+  double distance;
+  double alpha = ray_march(marched, 0.1, distance);
+  if (coin_flip(alpha)) {
+    hit_p = r.o + r.d * isect.t + r.d.unit() * distance;
+    if (r.depth > 1) {
+      float pdf = 0.0f;
+      Vector3D wi = Vector3D();
+      Vector3D w_in = Vector3D();
+      float distToLight = 0.0f;
+      scene->lights[0]->sample_L(hit_p, &wi, &distToLight, &pdf);
+
+      Matrix3x3 o2w_wi;
+      make_coord_space(o2w_wi, wi);
+
+      Matrix3x3 o2w_inv;
+      make_coord_space(o2w_inv, r.d.unit());
+
+      Collector c = Collector(hit_p, 1.0, o2w_wi, isect.primitive, gen);
+      Collector c_transmit = Collector(hit_p, 1.0, o2w_inv, isect.primitive, gen);
+      Intersection next_isect;
+      double delta = 0.0; double delta_transmit = 0.0;
+
+      Ray next_ray = Ray(hit_p + EPS_D * wi, wi);
+      Ray next_inv_ray = Ray(hit_p - EPS_D * wi, -wi);
+      bool intersects = bvh->intersect(next_ray, &next_isect);
+      if (intersects && c.project(next_ray, next_isect, delta)) {
+
+        std::vector<double> L;
+        Collector argmin = c;
+        std::vector<Collector> collectors;
+        double deltaMin = 1000000.0;
+        for (int i = 0; i < COLLECTOR_ITER_LIMIT && deltaMin <= DELTA_THRESHOLD; i++) {
+
+          Slab slab = argmin.generate_slab(argmin.mean);
+          collectors = slab.transport_sample(exit, wi, L, cloud, std::min(static_cast<int>(r.depth-1), MAX_SCATTER));
+
+          for (Collector c_order : collectors) {
+            scene->lights[0]->sample_L(c_order.mean, &wi, &distToLight, &pdf);
+            next_ray = Ray(c_order.mean + EPS_D * wi, wi);
+            next_inv_ray = Ray(c_order.mean - EPS_D * wi, -wi);
+            if ((bvh->intersect(next_ray, &next_isect) && c.project(next_ray, next_isect, delta)) ||
+              (bvh->intersect(next_inv_ray, &next_isect) && c.project(next_inv_ray, next_isect, delta))) {
+              if (argmin == c || deltaMin > delta) {
+                deltaMin = delta;
+                argmin = c_order;
+              }
+            }
+          }
+        }
+
+        Spectrum L_direct = one_bounce_radiance(next_ray, next_isect);
+        Spectrum L_collect = Spectrum();
+
+        for (int o = 0; o < collectors.size(); o++) {
+          for (int i = 0; i < COLLECTOR_NUM_SAMPLES; i++) {
+            Vector3D o_next = collectors[o].sample();
+            Vector3D d_prev = (o_next - r.o).unit();
+            // cout << w_out << ", " << w_in << endl;
+            Vector3D d_next = collectors[o].origin2w.T() * w_in;
+            next_ray = Ray(o_next + EPS_D * d_next, d_next);
+
+            if (bvh->intersect(next_ray, &next_isect)) {
+              if (collectors[o].same_mesh(next_isect.primitive)) {
+                next_ray.o += (next_isect.t + EPS_D) * next_ray.d;
+                if (bvh->intersect(next_ray, &next_isect)) {
+                  next_ray.depth = r.depth-collectors[o].order;
+                  Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
+                  if (next_isect.bsdf->is_delta())
+                    rad_in += zero_bounce_radiance(next_ray, next_isect);
+                  if (pdf != 0.0f) {
+                    float cosThetai = (fabs(w_in[2]) / w_in.norm());
+                    L_collect += L[o] * cosThetai * rad_in / (pdf);
+                    // std::cout << sample_bsdf << std::endl;
+                  }
+                }
+              } else {
+                next_ray.depth = r.depth-1;
+                Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
+                if (next_isect.bsdf->is_delta())
+                  rad_in += zero_bounce_radiance(next_ray, next_isect);
+                if (pdf != 0.0f) {
+                  float cosThetai = (fabs(w_in[2]) / w_in.norm());
+                  L_collect += L[o] * cosThetai * rad_in / (pdf);
+                  // std::cout << sample_bsdf << std::endl;
+                }
+              }
+            }
+          }
+        }
+
+        // std::cout << L_out << " + " << L_collect / COLLECTOR_NUM_SAMPLES << " + " << L_direct << std::endl;
+        // cout << "COLLECT: " << alpha << ", " << distance << ", " << (L_collect / COLLECTOR_NUM_SAMPLES + L_direct) / RR << endl;
+        // cout << "DIRECT: " << L_direct << endl;
+        L_out += (L_collect / COLLECTOR_NUM_SAMPLES + L_direct) / RR;
+      }
+    }
+  } else {      
+    Spectrum L_transmit = Spectrum();
+    Ray transmitted = Ray(hit_p + EPS_D * r.d, r.d);
+    StaticScene::Intersection next_isect;
+    if (bvh->intersect(transmitted, &next_isect)) {
+      transmitted.o += r.d * (next_isect.t + EPS_D);
+      transmitted.depth = r.depth;
+
+      if (bvh->intersect(transmitted, &next_isect)) {
+        L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
+      } else {
+        transmitted.o -= r.d * (next_isect.t + EPS_D);
+        L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
+      }
+    }
+    // std::cout << L_transmit << std::endl;
+    L_out += L_transmit / RR;
+    // cout << "TRANSMIT: " << alpha << ", " << distance << ", " << L_transmit / RR << endl; 
+  }
+
+  return L_out;
+}
+
+double PathTracer::ray_march(const Ray &r, const double step_size, double &distance) {
+  StaticScene::Intersection isect;
+  Ray transmitted = r;
+  double d = 0.0; double alpha = 0.0; double c = 4.0;
+  bool locked = false;
+  Vector3D centroid = Vector3D();
+  if (bvh->intersect(transmitted, &isect)) {
+    auto *sph = dynamic_cast<const StaticScene::Sphere *>(isect.primitive);
+    auto *tri = dynamic_cast<const StaticScene::Triangle *>(isect.primitive);
+    if (sph) {
+      centroid = sph->object->o;
+    } else if (tri) {
+      auto *mesh = tri->mesh;
+      Vector3D sum = 0;
+      for (int i = 0; i < mesh->vertexI; i++) {
+        sum += mesh->positions[i];
+      }
+      centroid = sum / mesh->vertexI;
+    } else {
+      cout << "An error occurred!" << endl;
+      throw 1;
+    }
+    while (d <= isect.t * r.d.norm() && alpha < 1.0) {
+
+      Vector3D pos = transmitted.o - centroid;
+      double phi = atan(pos.y / pos.x);
+      if (pos.x < 0) { // quadrants II, III
+        phi += M_PI;
+      } else if (phi < 0) { // quadrant IV
+        phi += 2 * M_PI;
+      }
+      double theta = atan(std::sqrt(pos.x * pos.x + pos.y * pos.y) / pos.z);
+      double depth = min(isect.t * r.d.norm() - d, d);
+      const Ray snapshot = transmitted;
+      depth = estimate_depth(depth, snapshot);
+
+      double density = hypertex.sample(depth, theta, phi);
+      // cout << depth << ", " << density << endl;
+      double alpha_k = 1.0 - pow(1.0 - density, c*step_size);
+      alpha += alpha_k * (1 - alpha);
+      d += step_size;
+      transmitted.o += step_size * r.d.unit();
+      if (!locked && coin_flip(alpha_k)) {
+        distance = d;
+        locked = true;
+      }
+    }
+  }
+  // cout << "Result: " << clamp(alpha, 0.0, 1.0) << ", " << distance << endl;
+  return clamp(alpha, 0.0, 1.0);
+}
+
+double PathTracer::estimate_depth(double max_depth, const Ray &r) {
+  Matrix3x3 o2w = Matrix3x3();
+  make_coord_space(o2w, r.d);
+  Vector3D x = o2w[0];
+  Vector3D y = o2w[1];
+  StaticScene::Intersection isect;
+  double init_depth = max_depth;
+
+  Ray x_ray = Ray(r.o, x);
+  x_ray.max_t = max_depth;
+  if (bvh->intersect(x_ray, &isect)) {
+    max_depth = isect.t * x_ray.d.norm();
+  }
+
+  Ray y_ray = Ray(r.o, y);
+  y_ray.max_t = max_depth;
+  if (bvh->intersect(y_ray, &isect)) {
+    max_depth = isect.t * y_ray.d.norm();
+  }
+
+  Ray neg_x_ray = Ray(r.o, -x);
+  neg_x_ray.max_t = max_depth;
+  if (bvh->intersect(neg_x_ray, &isect)) {
+    max_depth = isect.t * neg_x_ray.d.norm();
+  }
+
+  Ray neg_y_ray = Ray(r.o, -y);
+  neg_y_ray.max_t = max_depth;
+  if (bvh->intersect(neg_y_ray, &isect)) {
+    max_depth = isect.t * neg_y_ray.d.norm();
+  }
+
+  return max_depth;
 }
 
 Spectrum PathTracer::raytrace_pixel(size_t x, size_t y, bool useThinLens) {

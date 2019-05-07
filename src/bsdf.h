@@ -51,6 +51,8 @@ inline double sin_phi(const Vector3D& w) {
   return clamp(w.y / sinTheta, -1.0, 1.0);
 }
 
+double hg_phase(const Vector3D& wo, const Vector3D& wi);
+
 void make_coord_space(Matrix3x3& o2w, const Vector3D& n);
 
 /**
@@ -281,7 +283,7 @@ class CloudBSDF : public BSDF {
  private:
 
   Spectrum reflectance;
-  CosineWeightedHemisphereSampler3D sampler;
+  UniformGridSampler2D sampler;
 
 }; // class CloudBSDF
 

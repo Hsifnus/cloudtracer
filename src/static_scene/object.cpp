@@ -18,7 +18,7 @@ Mesh::Mesh(const HalfedgeMesh& mesh, BSDF* bsdf) {
   unordered_map<const Vertex *, int> vertexLabels;
   vector<const Vertex *> verts;
 
-  size_t vertexI = 0;
+  vertexI = 0;
   for (VertexCIter it = mesh.verticesBegin(); it != mesh.verticesEnd(); it++) {
     const Vertex *v = &*it;
     verts.push_back(v);

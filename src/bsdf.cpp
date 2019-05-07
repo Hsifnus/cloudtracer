@@ -5,6 +5,7 @@
 #include <utility>
 
 #define EPS_B 1e-20
+#define ANISO_G 0.9
 
 using std::min;
 using std::max;
@@ -218,18 +219,36 @@ Spectrum EmissionBSDF::f(const Vector3D& wo, const Vector3D& wi) {
 
 Spectrum EmissionBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) {
   *pdf = 1.0 / PI;
-  *wi  = sampler.get_sample(pdf);
+  *wi = sampler.get_sample(pdf);
   return Spectrum();
 }
 
 Spectrum CloudBSDF::f(const Vector3D& wo, const Vector3D& wi) {
-  return reflectance / PI;
+  return hg_phase(wo, wi) * reflectance;
+}
+
+double hg_phase(const Vector3D& wo, const Vector3D& wi) {
+  // compute Henyay-Greenstein approximation to Mie phase function
+  double phase = -dot(wo.unit(), wi.unit());
+  return (1.0 - ANISO_G * ANISO_G) / (std::pow(1.0 + ANISO_G * ANISO_G - 2 * ANISO_G * phase, 1.5)) / (4.0 * PI);
 }
 
 Spectrum CloudBSDF::sample_f(const Vector3D& wo, Vector3D* wi, float* pdf) {
-  *pdf = 1.0 / PI;
-  *wi  = sampler.get_sample(pdf);
-  return Spectrum();
+  // importance sample on Henyay-Greenstein phase function
+  Vector2D sample = sampler.get_sample();
+  double u = sample[0]; double v = 2.0 * PI * sample[1];
+  double phase = -(0.5 / ANISO_G) 
+    * (1 + ANISO_G * ANISO_G - std::pow((1 - ANISO_G*ANISO_G) / (1.0 - ANISO_G + 2 * ANISO_G * u), 2.0));
+  double theta = std::acos(phase);
+  Matrix3x3 sample_o2w = Matrix3x3();
+  make_coord_space(sample_o2w, wo);
+  Vector3D sample_w = Vector3D();
+  sample_w[0] = std::sin(theta) * std::cos(v);
+  sample_w[1] = std::sin(theta) * std::sin(v);
+  sample_w[2] = phase;
+  *wi = sample_o2w * sample_w;
+  *pdf = static_cast<float>(hg_phase(wo, *wi));
+  return f(wo, *wi);
 }
 
 } // namespace CGL
