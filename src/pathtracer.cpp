@@ -930,7 +930,7 @@ Spectrum PathTracer::canonical_cloud_slab_radiance(const Ray &r, const StaticSce
           collectors = slab.transport_sample(exit, wi, L, cloud, std::min(static_cast<int>(r.depth-1), MAX_SCATTER));
 
           for (Collector c_order : collectors) {
-            scene->lights[0]->sample_L(c_order.mean, &wi, &distToLight, &pdf);
+            // scene->lights[0]->sample_L(c_order.mean, &wi, &distToLight, &pdf);
             next_ray = Ray(c_order.mean + EPS_D * wi, wi);
             next_inv_ray = Ray(c_order.mean - EPS_D * wi, -wi);
             if ((bvh->intersect(next_ray, &next_isect) && c.project(next_ray, next_isect, delta)) ||
