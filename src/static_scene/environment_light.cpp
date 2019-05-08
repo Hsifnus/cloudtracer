@@ -32,7 +32,8 @@ void EnvironmentLight::init() {
 	double sum = 0;
 	for (int j = 0; j < h; ++j) {
 		for (int i = 0; i < w; ++i) {
-            pdf_envmap[w * j + i] = envMap->data[w * j + i].illum() * sin(PI * (j+.5) / h);
+            double elem = envMap->data[w * j + i].illum() * sin(PI * (j+.5) / h);
+            pdf_envmap[w * j + i] = isinf(elem) ? 0.0 : elem;
             sum += pdf_envmap[w * j + i];
 		}
 	}

@@ -51,7 +51,7 @@ PathTracer::PathTracer(size_t ns_aa,
                        string filename,
                        double lensRadius,
                        double focalDistance,
-                       double deltaCeiling) : hypertex(PolarTex(42, 21, deltaCeiling, gen)) {
+                       double deltaCeiling) : hypertex(PolarTex(1001, 501, deltaCeiling, gen)) {
   state = INIT,
   this->ns_aa = ns_aa;
   this->max_ray_depth = max_ray_depth;
@@ -676,13 +676,12 @@ Spectrum PathTracer::at_least_one_bounce_radiance(const Ray&r, const Intersectio
     return L_out;
   }
 
-  if (!isect.bsdf->is_delta() && (this->mode <= 3 || max_ray_depth - r.depth + 3 == this->mode)) {
-    L_out = one_bounce_radiance(r, isect);
-  }
-
   if (isect.bsdf->is_cloud()) {
     L_out += canonical_cloud_slab_radiance(r, isect);
   } else {
+    if (!isect.bsdf->is_delta() && (this->mode <= 3 || max_ray_depth - r.depth + 3 == this->mode)) {
+      L_out = one_bounce_radiance(r, isect);
+    }
 
     // TODO (Part 4.2): 
     // Here is where your code for sampling the BSDF,
@@ -704,13 +703,21 @@ Spectrum PathTracer::at_least_one_bounce_radiance(const Ray&r, const Intersectio
             float cosThetai = (fabs(w_in[2]) / w_in.norm());
             L_out += sample_bsdf * cosThetai * rad_in / (RR * pdf);
           }
+        } else {
+          // if (r.depth > 298) {
+          //   cout << "Did not intersect anything." << L_out << endl;
+          // }
         }
+      } else {
+        // if (r.depth > 298) {
+        //   cout << "RR termination." << L_out << endl;
+        // }
       }
     }
+    // if (r.depth > 298) {
+    //   cout << "Non-cloud - Depth " << r.depth << " L_out: " << L_out << endl;
+    // }
   }
-
-  // cout << "Depth " << r.depth << " L_out: " << L_out << endl;
-
   return L_out;
 }
 
@@ -888,9 +895,12 @@ Spectrum PathTracer::canonical_cloud_slab_radiance(const Ray &r, const StaticSce
   const Ray exit = Ray(hit_p, r.d);
   BSDF *cloud = isect.bsdf;
 
+  L_out = one_bounce_radiance(r, isect);
   if (r.depth == 0 || coin_flip(1.0 - RR)) {
     return L_out;
   }
+
+  bool test = false;
 
   Ray marched = Ray(hit_p + EPS_D * r.d, r.d);
   double distance;
@@ -969,7 +979,7 @@ Spectrum PathTracer::canonical_cloud_slab_radiance(const Ray &r, const StaticSce
                   }
                 }
               } else {
-                next_ray.depth = r.depth-1;
+                next_ray.depth = r.depth-collectors[o].order;
                 Spectrum rad_in = at_least_one_bounce_radiance(next_ray, next_isect);
                 if (next_isect.bsdf->is_delta())
                   rad_in += zero_bounce_radiance(next_ray, next_isect);
@@ -987,27 +997,47 @@ Spectrum PathTracer::canonical_cloud_slab_radiance(const Ray &r, const StaticSce
         // cout << "COLLECT: " << alpha << ", " << distance << ", " << (L_collect / COLLECTOR_NUM_SAMPLES + L_direct) / RR << endl;
         // cout << "DIRECT: " << L_direct << endl;
         L_out += (L_collect / COLLECTOR_NUM_SAMPLES + L_direct) / RR;
+      } else {
+        L_out = one_bounce_radiance(r, isect);
       }
     }
-  } else {      
+  } else {   
+    test = true;   
     Spectrum L_transmit = Spectrum();
     Ray transmitted = Ray(hit_p + EPS_D * r.d, r.d);
     StaticScene::Intersection next_isect;
     if (bvh->intersect(transmitted, &next_isect)) {
-      transmitted.o += r.d * (next_isect.t + EPS_D);
-      transmitted.depth = r.depth;
+      if (next_isect.bsdf->is_cloud()) {
+        Ray second_transmitted = Ray(r.o + r.d * (next_isect.t + 2 * EPS_D), r.d);
+        second_transmitted.depth = r.depth;
+        StaticScene::Intersection another_isect;
 
-      if (bvh->intersect(transmitted, &next_isect)) {
-        L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
+        L_transmit = one_bounce_radiance(transmitted, next_isect);
+        if (bvh->intersect(second_transmitted, &another_isect)) {
+          if (another_isect.bsdf->is_cloud()) {
+            L_transmit += canonical_cloud_slab_radiance(second_transmitted, another_isect);
+          } else {
+            L_transmit += at_least_one_bounce_radiance(second_transmitted, another_isect);
+          }
+          // if (r.depth >= 299) {
+          //   cout << "* Depth " << r.depth << " TRANSMIT A: " << alpha << ", " << distance << ", " << L_transmit / RR << endl; 
+          // }
+        }
       } else {
-        transmitted.o -= r.d * (next_isect.t + EPS_D);
+        transmitted.depth = r.depth;
         L_transmit = at_least_one_bounce_radiance(transmitted, next_isect);
+        // if (r.depth >= 299) {
+        //   cout << "* Depth " << r.depth << " TRANSMIT B: " << alpha << ", " << distance << ", " << L_transmit / RR << endl; 
+        // }
       }
     }
     // std::cout << L_transmit << std::endl;
     L_out += L_transmit / RR;
-    // cout << "TRANSMIT: " << alpha << ", " << distance << ", " << L_transmit / RR << endl; 
   }
+
+  // if (r.depth > 298) {
+  //   cout << "Cloud - Depth " << r.depth << " L_out: " << L_out << " Transmitted: " << test << endl;
+  // }
 
   return L_out;
 }

@@ -29,8 +29,8 @@ PolarTex::PolarTex(size_t w, size_t h, double d, std::default_random_engine gen)
 			if (j < width - 1) {
 				std::normal_distribution<double> delta(clamp(mean(gen), 0.0, 1.0), std::cos(polarAngle));
 				row.push_back(clamp(delta(gen), 0.0, 1.0));
-				std::normal_distribution<double> weight(mean(gen), 100.0 * std::cos(polarAngle));
-				weightRow.push_back(std::pow(weight(gen), 2.0));
+				std::normal_distribution<double> weight(mean(gen), 2.0 * std::cos(polarAngle));
+				weightRow.push_back(std::pow(weight(gen), 4.0));
 			} else {
 				row.push_back(row[0]);
 				weightRow.push_back(weightRow[0]);
