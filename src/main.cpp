@@ -143,6 +143,7 @@ int main( int argc, char** argv ) {
       case 'P':
           config.pathtracer_polarTexWidth = atoi(argv[optind-1]);
           config.pathtracer_polarTexHeight = atoi(argv[optind]);
+          optind++;
           break;
       default:
           usage(argv[0]);
