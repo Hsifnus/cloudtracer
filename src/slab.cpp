@@ -122,7 +122,7 @@ std::vector<Collector> Slab::transport_sample(const Ray &exit, Vector3D incident
 		double d;
 		double ext_phase;
 		for (int o = 0; curr[2] < 0 && o < O && curr[2] > -thickness; o++) {
-			l = std::log(EXT_COEFF * u(gen));
+			l = -std::log(1 - u(gen)) / EXT_COEFF;
 			curr += l * v;
 			// std::cout << o << ", " << curr << std::endl;
 
