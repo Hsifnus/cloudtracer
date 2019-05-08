@@ -81,7 +81,9 @@ class PathTracer {
              string filename = "",
              double lensRadius = 0.25,
              double focalDistance = 4.7,
-             double deltaCeiling = 1e-8);
+             double deltaCeiling = 1e-8,
+             int polarTexWidth = 1001,
+             int polarTexHeight = 501);
 
   /**
    * Destructor.

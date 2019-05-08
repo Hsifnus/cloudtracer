@@ -62,7 +62,9 @@ struct AppConfig {
     pathtracer_lensRadius = 0.25;
     pathtracer_focalDistance = 4.7;
 
-    pathtracer_deltaCeiling = 1e-8;
+    pathtracer_deltaCeiling = 1e-2;
+    pathtracer_polarTexWidth = 1001;
+    pathtracer_polarTexHeight = 501;
   }
 
   size_t pathtracer_ns_aa;
@@ -87,6 +89,8 @@ struct AppConfig {
   double pathtracer_focalDistance;
 
   double pathtracer_deltaCeiling;
+  int pathtracer_polarTexHeight;
+  int pathtracer_polarTexWidth;
 };
 
 class Application : public Renderer {

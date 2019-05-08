@@ -51,7 +51,9 @@ PathTracer::PathTracer(size_t ns_aa,
                        string filename,
                        double lensRadius,
                        double focalDistance,
-                       double deltaCeiling) : hypertex(PolarTex(1001, 501, deltaCeiling, gen)) {
+                       double deltaCeiling,
+                       int polarTexWidth,
+                       int polarTexHeight) : hypertex(PolarTex(polarTexWidth, polarTexHeight, deltaCeiling, gen)) {
   state = INIT,
   this->ns_aa = ns_aa;
   this->max_ray_depth = max_ray_depth;
