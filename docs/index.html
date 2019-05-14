@@ -64,86 +64,268 @@ function topFunction() {
 <body>
 <br />
 <h1 align="middle">CS 184 Final Project: Anisotropic Scattering in Clouds</h1>
-    <h2 align="middle"><u>Progress Report</u></h2>
+    <h2 align="middle"><u>Final Report</u></h2>
+    <h4 align="middle"><a href="index_old.html">(Progress report can be found here)</a></h2>
     <h2 align="middle">Jonathan Sun</h2>
     <button onclick="topFunction()" id="myBtn" title="Go to top">Top</button>
 
-    <h2 align="middle">Project Overview</h2>
-        <p>This project seeks to augment the pathtracer created for Assignment 3-2 to be able to render realistic clouds from any mesh using an approach in the spirit of the iterative slab-based method of computing anisotropic scattering in clouds as described in the following research literature:</p>
+    <h2 align="middle">Project Abstract</h2>
+        <p>This project attempts to augment the pathtracer created for Assignment 3-2 in order to be able to render realistic clouds from any mesh using an approach in the spirit of the iterative slab-based method of computing anisotropic scattering in clouds as described in the following research literature:</p>
         <ul>
           <li><a href="http://www-evasion.imag.fr/Publications/2008/BNMBC08/clouds.pdf">Interactive multiple anisotropic scattering in clouds</a></li>
           <li><a href="http://www-evasion.imag.fr/Membres/Antoine.Bouthors/research/phd/thesis/thesis.pdf">Real-time realistic rendering of clouds</a></li>
         </ul>
+        <p>Due to time and resource constraints, completely faithful emulation of the approaches described in the literature proved to not be possible. Nonetheless, I found the process of gaining an understanding of real pieces of research literature via re-implementation (and innovation too) to be a rewarding endeavor.</p>
 
-    <h2 align="middle">Progress: Basic Slab-Based Radiance and Hypertexture Emulation for Cloud BSDFs</h2>        
-
-        <p>So far, I have implemented the basic scaffolding for simulating scattering in clouds, adding basic placeholder methods to be refined in the next few days. Some changes made to the pathtracer so far include:</p>
+    <h2 align="middle">Technical Walkthrough</h2>        
+        <p>The process that underlies my implementation of anisotropic cloud scattering can be divided into the following components:</p>
         <ul>
-          <li>Added a <b>CloudBSDF</b> class in <i>bsdf.cpp</i> that currently acts like DiffuseBSDF.</li>
-          <li>Added the function <b>basic_cloud_slab_radiance</b> to <i>pathtracer.cpp</i>, which is called midway through <b>at_least_one_bounce_radiance</b> and does the following for now:
+          <li>The <b>CloudBSDF</b> class in <i>bsdf.cpp</i>, specially marked as a cloud material (for which other existing BSDFs are marked as being non-cloud). The CloudBSDF uses the Henyay-Greenstein phase function to approximate the Mie phase function, which itself models the physical scattering of light by a homogenous sphere (such as a droplet).
+          <div align="center">
+            <table style="width=100%">
+                <tr>
+                    <td>
+                        <img src="images/mie_phase.png" align="middle" height="250px"/>
+                        <figcaption align="middle"><b>Fig 1.1:</b> Mie phase function. Radiance is scaled as a function of the cosine between incident and exitant rays.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/importance_sampling_HG.png" align="middle" height="250px"/>
+                        <figcaption align="middle"><b>Fig 1.2:</b> Henyay-Greenstein phase function and importance sampling.</figcaption>
+                    </td>
+                </tr>
+            </table>
+          </div>
+          For this implementation, the value of <b>g</b> is set to be <b>0.9</b>, which yields a Henyay-Greenstein approximation of the Mie phase function that captures the anisotropic forward scattering that defines the Mie phase function at low phase angles.
+          </li>
+          <li>
+          <p>The <b>PolarTex</b> class in the files <i>polar_tex.cpp</i> and <i>polar_tex.h</i>, which acts as the hypertexture (source of procedurally generated 3D textures) for this implementation. This texture uses a polar coordinate grid that is structurally similar to that used by the Project 3-2 environment map, but instead of simple numerical values, randomly generated parameters (mean depth and exponential coefficient) that define a sigmoid density function are stored in each grid entry. As expected, samples are taken by finding the nearest four grid entries to a given set of spherical coordinates before bilerping between the four sigmoid functions of said grid entries.</p>
+          <p>Two adjustable parameters of a PolarTex object include grid dimensions (how fine the procedurally generated texture is) and depth (how far into the mesh do variations in density occur).</p>
+          </li>
+          <li>The helper function <b>ray_march</b> found in <i>pathtracer.cpp</i>, which carries out the following:
             <ul>
-              <li>Ends immediately if ordered to do so by Russian roulette or by current ray depth hitting 0.</li>
-              <li>From a hit point, projects a ray in the direction of a light source and another ray in the direction of the input ray.</li>
-              <li>If the lightbound ray does not collide with the same cloud mesh at all, then the local surface is treated like a normal diffuse surface.</li>
-              <li>Otherwise, a slab (pair of planes) is formed perpendicular to the lightbound ray, with one plane tangent to the point of collision between the cloud mesh and the lightbound ray.</li>
-              <li>A random location on top of the slab is sampled repeatedly until a location that can be projected up/down the plane onto the cloud mesh is found.</li>
-              <li>A collector (region with a mean location and variance along a plane) is created at the selected spot on the plane, and the average radiance of rays traced from the collector is computed.</li>
-              <li>The ray projected in the direction of the input ray measures the local thickness of the cloud. This thickness, along with a delta parameter (which controls the ray traversal distance required for the cloud to appear opaque), is used to control the opacity of the collector radiances.</li>
+              <li>Given an input ray starting at the edge of a mesh's interior, checks to see if the ray intersects with another point within the mesh interior and stores the intersection time if so.</li>
+              <li>Computes the centroid of the mesh via averaging of the positions of all vertices in the mesh.</li>
+              <li>From the start of the ray to the intersection, steps along at a fixed step size.</li>
+              <li>Samples the density of the cloud at each time step before accumulating it. The density is sampled from a polar hypertexture using the polar coordinates of the currently traversed point with the centroid as the origin. The depth at a sampling point is estimated by measuring the distances along the axis of the input ray as well as 2 other axes that form a 3D basis with the input ray's axis.</li>
+              <li>Iteration stops and the density value (opacity) is returned should the accumulated density hit 1 or the sample location step beyond the intersection point. A distance is sampled by coin flip dependent on sampled density at each time step, with the distance corresponding to the first time step to pass the coin flip being chosen.</li>
             </ul>
           </li>
-          <li>Added the files <i>slab.cpp</i> and <i>slab.h</i> for storing various helper methods regarding slabs and collectors.</li>
+          <li>The function <b>canonical_cloud_slab_radiance</b> to <i>pathtracer.cpp</i>, which is called midway through <b>at_least_one_bounce_radiance</b> and does the following:
+            <div align="center">
+                <table style="width=100%">
+                    <tr>
+                        <td>
+                            <img src="images/Render Walkthrough-2.png" align="middle" height="400px"/>
+                            <figcaption align="middle"><b>Fig 1.3:</b> Pathtracing process for a cloud object.</figcaption>
+                        </td>
+                        <td>
+                            <img src="images/iterative_algorithm.png" align="middle" height="400px"/>
+                            <figcaption align="middle"><b>Fig 1.4:</b> Iterative cycle of collector projection and light transport, as shown in Bouthor's work on anisotropic cloud scattering.</figcaption>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <ul>
+              <li>Ends immediately if ordered to do so by Russian roulette or by the current ray depth hitting 0.</li>
+              <li>Creates a ray facing away from the exitant ray and uses said ray to call <b>ray_march</b> to obtain an opacity value and a sampled point along the marched ray.</li>
+              <li>A coin flip using the computed opacity as success probability is done. If the coin flip succeeds:
+                <ul>
+                  <li>For simplicity, samples one incident light direction from a light source and uses it for the rest of the function.</li>
+                  <li>From the sampled point, projects a ray in the direction of a light source and another ray in the direction of the input ray.</li>
+                  <li>If the lightbound ray does not collide with the same cloud mesh at all, then the local surface is treated like a normal diffuse surface.</li>
+                  <li>Otherwise, a slab (pair of planes) is formed perpendicular to the lightbound ray, with one plane tangent to the point of collision between the cloud mesh and the lightbound ray.</li>
+                  <li>Next, a group of collectors (regions with a mean location and variances along a plane) representing separate scattering orders are sampled from the slab using the canonical light transport algorithm found in the function <b>transport_sample</b> located in <i>slab.cpp</i>.</li>
+                  <li>All of the collectors are projected onto the cloud mesh, and of the collectors that successfully project onto the mesh, the collector that moved the least is checked to see if the displacement is below a certain convergence threshold. If so, the current array of collectors is finalized. Otherwise, the minimally displaced collector (or the original collector if no sampled collectors project successfully) is used to form a new slab from which <b>transport_sample</b> is called again. This continues until convergence is attained or iteration continues for long enough.</li>
+                  <li>The finalized group of collectors now sample many incident rays and average together the incoming radiances of the rays, subtracting from ray depth the scattering order associated with the collector. This radiance is summed up alongside a direct lighting component computed from one of the projected collectors before being scaled to account for Russian roulette termination and returned.</li>
+                </ul>
+              </li>
+              <li>Should the coin flip fail:
+                <ul>
+                  <li>A ray is transmitted directly through the mesh along the same axis as the exitant ray, and radiance is collected from the direct lighting radiance computed from the point on the other side of the mesh plus the global radiance computed at the next surface the ray hits after leaving said point. This attempts to allow transparency of clouds around their edges.</li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li>Added the files <i>slab.cpp</i> and <i>slab.h</i> for storing various helper methods regarding slabs and collectors. Some notable functions from these files include:
+            <ul>
+              <li><b>Collector::sample</b>, which samples a location in 3D space along a collector's plane using a bivariate Gaussian. Used to sample incident rays and collect radiances to be averaged during cloud pathtracing.</li>
+              <li><b>Collector::project</b>, which projects the collector along the axis of the input ray (representing incident light direction) towards the nearest surface of the cloud mesh it belongs to. A boolean is returned stating whether the collector is able to be projected onto the mesh along the specified direction, and if so, the collector is shifted to the location on the cloud mesh, with its plane of sampling adjusted to be tangent to the surface it is on.</li>
+              <div align="center">
+                  <table style="width=100%">
+                      <tr>
+                          <td>
+                              <img src="images/slab.png" align="middle" width="600px"/>
+                              <figcaption align="middle"><b>Fig 1.5:</b> The canonical light transport algorithm performed in <b>Slab::transport_sample</b>.</figcaption>
+                          </td>
+                      </tr>
+                  </table>
+              </div>
+              <li><b>Slab::transport_sample</b>, which samples multiple, segmented paths that wiggle towards the top of the slab using directions sampled using an extinction (probability of hitting a water droplet in a cloud given a certain distance of travel) PDF for segment length and the Henyay-Greenstein PDF for sampling segment direction relative to previous segments. At each bend in a path, a collector location is created by projecting from the bend along the incident light direction to the top of the slab. These collector locations are therefore separated by scattering order (how many bends it takes to reach this collector) and are averaged across all sampled paths to obtain the final vector of collectors. Collector variances are also computed and averaged during this process. All the sampled paths start at the same point, which is specified as an input argument. Said point is the location sampled during ray marching.</li>
+            </ul>
+          </li>
         </ul>
 
-        <h2 align="middle">Preliminary Renders</h2>
+    <h2 align="middle">Challenges and Reflections</h2> 
+
+        <p>Some challenges I faced along the way included:</p>
+        <ul>
+          <li>Figuring out how to integrate new files (for slab, collector, and polar texture functions) into the existing pathtracer. I first tried directly calling make with the new files in the source directory, only to get an odd message about missing symbols from the linker. Many hours of fruitless searching through Stack Overflow questions later, I finally figured out on my own after giving the project subdirectories a closer look that I actually had to add the new files to the cmake config located in the source directory in order for the new files to be linked together properly.</li>
+          <li>Debugging for the correctness of my polar hypertexture implementation proved to be pretty difficult due to the amount of parameters to adjust (texture depth, texture grid size, extinction coefficients, sigmoid function parameter initialization, etc.) I tackled the issue through persistent and methodical experimentation with different values, varying one parameter until the renders looked more convincing before moving onto the next parameter to tweak.</li>
+          <li>Due to some circumstances beyond my control, my partners for this project disbanded and started a different project on their own right before the progress report was due. As such, I had to implement essentially the entirety of this project on my own. This required significant amounts of time dedicated to implementation and testing, to the point where I pulled about 4-5 all-nighters on this project and also worked on the project while working on my other two final projects this semester, just to be able to make sure my implementation was doing well every step of the way.</li>
+        </ul>
+
+        <p>The implementation is far from perfect, for the following reasons:</p>
         <div align="center">
             <table style="width=100%">
-                <figcaption align="middle"><b>NOTE: <i>All images are rendered using 2048 samples per pixel, 4 samples per light, max ray depth of 300, and Russian roulette termination probability of 0.3</i></b></figcaption>
                 <tr>
                     <td>
-                        <img src="images/cloudy_spheres_001.png" align="middle" width="500px"/>
-                        <figcaption align="middle"><b>Fig 1.1:</b> <i>sky/CBspheres_cloudy.dae</i> rendered with delta parameter of 0.01.</figcaption>
+                        <img src="images/imperfections.png" align="middle" width="600px"/>
+                        <figcaption align="middle"><b>Fig 2.1:</b> Some missing features and imperfections of the current implementation.</figcaption>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        <ul>
+          <li>The Henyay-Greenstein phase function doesn't fully capture all the features of the Mie phase function, leading to certain optical phenomena relating to clouds (i.e. solar glories and fog bows) being absent from the renders.</li>
+          <li>Since the subsurface scattering process in a cloud object assumes that all the scattering takes place within a closed cloud mesh that doesn't intersect with other meshes in order to simplify ray intersection logic, renders in which multiple cloud meshes intersect (such as any of the low-poly cloud renders below) have black edges around where the meshes intersect.</li>
+          <li>While transparency was working earlier, transmission of light through the cloud appears to function oddly once I added in ray marching and anisotropic scattering to the pathtracer. The result was that while some light from behind the cloud was being transmitted through in environmental map renders, there was a generally black background where transparent surfaces should be.</li>
+        </ul>
+
+        <p>While it was certainly a grueling trek to make it to this point in the project, I feel intellectually rewarded with the ability to understand the research literature mentioned above at a deeper level thanks to hands-on experience re-implementing various segments of algorithms described in the papers. Some features of this implementation, such as the polar hypertexture, were not directly based off of research literature, and being able to put my own creative twist on existing research has proved to be an exciting pursuit.</p>
+
+    <h2 align="middle">Results</h2>
+
+        <div align="center">
+            <p>NOTE: <i>All images are rendered using at least 2048 samples per pixel, at least 4 samples per light, max ray depth of 300, and Russian roulette termination probability of 0.3</i></p>
+            <table style="width=100%">
+                <figcaption align="middle"><b><u>Renders across different environment maps</u></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/cloud_4_dawn.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.1:</b> <i>sky/Cloud_4.dae</i> rendered in the environment map <i>kiara_dawn.exr</i>.</figcaption>
                     </td>
                     <td>
-                        <img src="images/cloudy_bunny_001.png" align="middle" width="500px"/>
-                        <figcaption align="middle"><b>Fig 1.2:</b> <i>sky/CBbunny_cloudy.dae</i> rendered with delta parameter of 0.01.</figcaption>
+                        <img src="images/cloud_dragon_dawn.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.2:</b> <i>sky/dragon_cloudy.dae</i> rendered in the environment map <i>kiara_dawn.exr</i>.</figcaption>
                     </td>
                 </tr>
                 <tr>
                     <td>
-                        <img src="images/cloudy_spheres_08.png" align="middle" width=500px"/>
-                        <figcaption align="middle"><b>Fig 1.3:</b> <i>sky/CBspheres_cloudy.dae</i> rendered with delta parameter of 0.8.</figcaption>
+                        <img src="images/cloud_4_morning.png" align="middle" width=500px"/>
+                        <figcaption align="middle"><b>Fig 3.3:</b> <i>sky/Cloud_4.dae</i> rendered in the environment map <i>kiara_morning.exr</i>.</figcaption>
                     </td>
                     <td>
-                        <img src="images/cloudy_bunny_08.png" align="middle" width="500px"/>
-                        <figcaption align="middle"><b>Fig 1.4:</b> <i>sky/CBbunny_cloudy.dae</i> rendered with delta parameter of 0.8.</figcaption>
+                        <img src="images/cloud_dragon_morning.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.4:</b> <i>sky/dragon_cloudy.dae</i> rendered in the environment map <i>kiara_morning.exr</i>.</figcaption>
                     </td>
                 </tr>
                 <tr>
                     <td>
-                        <img src="images/lambertian_spheres.png" align="middle" width=500px"/>
-                        <figcaption align="middle"><b>Fig 1.5:</b> <i>sky/CBspheres_lambertian.dae</i> rendered for reference.</figcaption>
+                        <img src="images/cloud_4_sunset.png" align="middle" width=500px"/>
+                        <figcaption align="middle"><b>Fig 3.5:</b> <i>sky/Cloud_4.dae</i> rendered in the environment map <i>kiara_sunset.exr</i>.</figcaption>
                     </td>
                     <td>
-                        <img src="images/lambertian_bunny.png" align="middle" width="500px"/>
-                        <figcaption align="middle"><b>Fig 1.6:</b> <i>sky/CBbunny.dae</i> rendered for reference.</figcaption>
+                        <img src="images/cloud_dragon_sunset.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.6:</b> <i>sky/dragon_cloudy.dae</i> rendered in the environment map <i>kiara_sunset.exr</i>.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/cloud_4_bund.png" align="middle" width=500px"/>
+                        <figcaption align="middle"><b>Fig 3.7:</b> <i>sky/Cloud_4.dae</i> rendered in the environment map <i>bund.exr</i>..</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/cloud_dragon_bund.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.8:</b> <i>sky/dragon_cloudy.dae</i> rendered in the environment map <i>bund.exr</i>.</figcaption>
+                    </td>
+                </tr>
+            </table>
+            <p> </p>
+            <table style="width=100%">
+                <figcaption align="middle"><b><u>Renders across different angles</u></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/cloud_1_sunset.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.9:</b> <i>sky/Cloud_1.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> facing front.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/cloud_1_sunset_back.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.10:</b> <i>sky/Cloud_1.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> facing back.</figcaption>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <img src="images/cloud_1_sunset_side.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.11:</b> <i>sky/Cloud_1.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> facing right.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/cloud_1_sunset_side_2.png" align="middle" width="500px"/>
+                        <figcaption align="middle"><b>Fig 3.12:</b> <i>sky/Cloud_1.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> facing left.</figcaption>
+                    </td>
+                </tr>
+            </table>
+            <p> </p>
+            <table style="width=100%">
+                <figcaption align="middle"><b><u>Effects of polar texture depth</u></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/bunny_sunset_0p01.png" align="middle" width="300px"/>
+                        <figcaption align="middle"><b>Fig 3.13:</b> <i>sky/bunny_cloudy.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> with polar texture depth of <b>0.01</b>.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/bunny_sunset_0p1.png" align="middle" width="300px"/>
+                        <figcaption align="middle"><b>Fig 3.14:</b> <i>sky/bunny_cloudy.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> with polar texture depth of <b>0.1</b>.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/bunny_sunset_1p0.png" align="middle" width="300px"/>
+                        <figcaption align="middle"><b>Fig 3.15:</b> <i>sky/bunny_cloudy.dae</i> rendered in the environment map <i>kiara_sunset.exr</i> with polar texture depth of <b>1.0</b></figcaption>
+                    </td>
+                </tr>
+            </table>
+            <table style="width=100%">
+                <figcaption align="middle"><b><u>Effects of polar texture grid dimensions (azimuthal x polar)</u></b></figcaption>
+                <tr>
+                    <td>
+                        <img src="images/cloud_2_9_5.png" align="middle" width="300px"/>
+                        <figcaption align="middle"><b>Fig 3.16:</b> <i>sky/Cloud_2.dae</i> rendered in the environment map <i>bund.exr</i> with polar texture dimensions of 9 x 5</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/cloud_2_101_51.png" align="middle" width="300px"/>
+                        <figcaption align="middle"><b>Fig 3.17:</b> <i>sky/Cloud_2.dae</i> rendered in the environment map <i>bund.exr</i> with polar texture dimensions of 101 x 51.</figcaption>
+                    </td>
+                    <td>
+                        <img src="images/cloud_2_1001_501.png" align="middle" width="300px"/>
+                        <figcaption align="middle"><b>Fig 3.18:</b> <i>sky/Cloud_2.dae</i> rendered in the environment map <i>bund.exr</i> with polar texture dimensions of 1001 x 501.</figcaption>
                     </td>
                 </tr>
             </table>
         </div>
 
-    <h2 align="middle">Reflections and Work Plan</h2>
-        <p>While the preliminary results aren't the most cloud-like, I am glad to see that my preliminary attempts of demonstrating light transport and hypertexture emulation are working, as seen by the glazed-glass appearances and faded edges of the above cloud renders. Having made it over most of the daunting foundational steps (adding new classes, figuring out how to link new files with cmake, etc.), I'm making good progress and should be able to have more refined cloud renders in a week or so.</p>
-        <p>Over the next week, I plan to implement the following refinements:</p>
-        <ul>
-          <li>Implement a more faithful emulation of the canonical light transport algorithms as described in the above research literature. This involves randomly sampling winding, segmented paths between the hit point in a cloud mesh and the top of the slab, as well as maintaining multiple collectors on top of the slab at once for different scattering orders and iteratively repeating collector projection and light transport until convergence is met. Perhaps, rays generated from such collectors can have their depth reduced by their scattering order number, as scattering order corresponds to the number of bounces made within the cloud.</li>
-          <li>Improve hypertexture emulation to be able to render procedurally varied surfaces that are sharp, unlike the blurred edges shown in the preliminary cloud renders above. This may require implementing a sort of volumetric map that allows for sharper, more uneven changes in opacity as local cloud thickness varies.</li>
-        </ul>
-
-    <h2 align="middle">Other Resources</h2>
+    <h2 align="middle">Links</h2>
         <ul>
           <li><a href="https://docs.google.com/presentation/d/1efoq124EIPVi_oPjEMngBl71TBpFudoQR1HXAnJ-Wyg/edit?usp=sharing">Progress Report Slide Deck (requires UC Berkeley account)</a></li>
           <li><a href="https://www.youtube.com/watch?v=Of7n3x8AX7A&feature=youtu.be">Milestone Video</a></li>
+          <li><a href="https://docs.google.com/presentation/d/1mw9yNKbTx03oNEFpzl25dn8oQfvuI47S_zEVKKJ4Vdc/edit?usp=sharing">Poster Presentation Slide Deck (requires UC Berkeley account)</a></li>
+          <li><a href="https://youtu.be/5gUOh9e2lPo">Project Video</a></li>
         </ul>
+
+    <h2 align="middle">References</h2>
+        <h3>Research literature:</h3>
+        <ul>
+          <li><a href="http://www-evasion.imag.fr/Publications/2008/BNMBC08/clouds.pdf">Interactive multiple anisotropic scattering in clouds</a></li>
+          <li><a href="http://www-evasion.imag.fr/Membres/Antoine.Bouthors/research/phd/thesis/thesis.pdf">Real-time realistic rendering of clouds</a></li>
+          <li><a href="https://dl.acm.org/citation.cfm?id=74359#">Hypertexture</a></li>
+        </ul>
+
+        <h3>Image sources:</h3>
+        <ul>
+          <li>The research literature listed above</li>
+          <li>The project path-tracer</li>
+        </ul>
+
+
+    <h2 align="middle">Team Contributions</h2>
+        <p>As this is a solo project, I did all of the implementation work. However, prior to disbanding, the team I was in brainstormed quite a bit about what we could with this idea of cloud scattering, and to that I would like to give thanks to Tyler Yath and Rachael Boyle for working with me in the brainstorming process back then!</p>
 </div>
 </body>
 </html>
